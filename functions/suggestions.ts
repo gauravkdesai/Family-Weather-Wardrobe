@@ -117,7 +117,9 @@ const callGemini = async (prompt: string, useGrounding: boolean = false): Promis
     throw lastError || new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts.`);
 }
 
-const createDailyPrompt = (family: string[], day: 'today' | 'tomorrow', schedule?: string, locationInfo?: { lat: number, lon: number } | { location: string }): string => {
+const createDailyPrompt = (family: string[], day: 'today' | 'tomorrow', rawschedule?: string, locationInfo?: { lat: number, lon: number } | { location: string }): string => {
+    const schedule = rawschedule ? rawschedule.substring(0, 300) : '';
+
     const schedulePromptPart = schedule && schedule.trim() ? ` The user has provided a schedule: "${schedule}". Suggestions MUST be tailored to these activities.` : '';
     const dayPromptPart = day === 'tomorrow' ? 'for tomorrow' : 'for today';
     

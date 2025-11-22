@@ -1,0 +1,31 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'index.tsx'
+      - 'App.tsx'
+      - 'components/**'
+      - 'frontend/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT }}
+
+      - name: Build and push image to Artifact Registry
+        run: |
+          gcloud builds submit --config=cloudbuild.yaml --substitutions=_FRONTEND_SERVICE=${{ env.FRONTEND_SERVICE }},_BACKEND_SERVICE=${{ env.BACKEND_SERVICE }},_AR_REPO=${{ env.AR_REPO }}
+        env:
+          FRONTEND_SERVICE: family-weather-wardrobe-frontend
+          BACKEND_SERVICE: family-weather-wardrobe-backend
+          AR_REPO: family-weather-wardrobe-repo

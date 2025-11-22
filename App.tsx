@@ -82,6 +82,8 @@ const App: React.FC = () => {
   
   // Shared state
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [showLocationExplanation, setShowLocationExplanation] = useState(false);
+  const pendingRequestDayRef = useRef<'today' | 'tomorrow' | null>(null);
   const [family, setFamily] = useState<FamilyMember[]>(() => {
     try {
       const storedFamily = localStorage.getItem(FAMILY_STORAGE_key);
@@ -162,7 +164,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleGetSuggestions = useCallback((day: 'today' | 'tomorrow') => {
+  const handleGetSuggestions = useCallback((day: 'today' | 'tomorrow', opts?: { skipPermissionPrompt?: boolean }) => {
     if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
     
     setError(null);
@@ -217,6 +219,16 @@ const App: React.FC = () => {
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser. Please enter your location manually.");
       setShowManualLocation(true);
+      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+      setDailyLoadingMessage(null);
+      return;
+    }
+
+    const skipPrompt = opts?.skipPermissionPrompt === true;
+    // Show an in-app explanation before triggering the browser permission prompt
+    if (!skipPrompt && !showManualLocation) {
+      pendingRequestDayRef.current = day;
+      setShowLocationExplanation(true);
       if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setDailyLoadingMessage(null);
       return;
@@ -315,6 +327,37 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans flex flex-col">
+      {showLocationExplanation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Allow location access?</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Family Weather Wardrobe would like to use your device's location to show local weather and personalized outfit suggestions. We only use your location to fetch weather and do not store precise coordinates.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowLocationExplanation(false);
+                  setShowManualLocation(true);
+                  pendingRequestDayRef.current = null;
+                }}
+                className="px-4 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
+              >
+                Enter location manually
+              </button>
+              <button
+                onClick={() => {
+                  const pending = pendingRequestDayRef.current ?? 'today';
+                  setShowLocationExplanation(false);
+                  pendingRequestDayRef.current = null;
+                  handleGetSuggestions(pending, { skipPermissionPrompt: true });
+                }}
+                className="px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+              >
+                Allow location
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <main className="container mx-auto px-4 py-8 sm:py-16 flex-grow">
         <header className="w-full max-w-4xl mx-auto text-center mb-10">
             <div className="flex justify-center items-center gap-3 mb-2 flex-wrap">

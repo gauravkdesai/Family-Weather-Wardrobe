@@ -71,7 +71,19 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
                             </foreignObject>
                             
                             <text x={p.x} y={SVG_HEIGHT - 10} textAnchor="middle" fill="currentColor" className="text-xs font-mono font-medium text-slate-600 dark:text-slate-300">
-                                {dayParts[i].time.split(':')[0].replace(/^0/, '')}
+                              {(() => {
+                                const t = dayParts[i].time || '';
+                                const [hhStr, mmStr] = t.split(':');
+                                const hh = Number(hhStr);
+                                const mm = Number(mmStr || 0);
+                                if (Number.isNaN(hh)) return t;
+                                const suffix = hh >= 12 ? 'PM' : 'AM';
+                                const hour12 = ((hh + 11) % 12) + 1; // convert 0->12
+                                if (mm && mm !== 0) {
+                                  return `${hour12}:${String(mm).padStart(2, '0')} ${suffix}`;
+                                }
+                                return `${hour12} ${suffix}`;
+                              })()}
                             </text>
                         </g>
                     );

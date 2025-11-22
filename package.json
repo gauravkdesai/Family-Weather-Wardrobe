@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "preview": "vite preview --port 3000",
     "build": "node build.mjs"
   },
   "dependencies": {
