@@ -27,11 +27,6 @@ Prerequisites:
 - Cloud Run and Cloud Build APIs enabled
 Deploy to Google Cloud Run (via Cloud Build)
 
-Prerequisites:
-- `gcloud` CLI installed and authenticated
-- Billing enabled on your GCP project
-- Cloud Run, Cloud Build and Artifact Registry APIs enabled
-
 The repository includes `cloudbuild.yaml` which builds both frontend and backend images and pushes them to Artifact Registry, then deploys to Cloud Run.
 
 Set project and submit Cloud Build (example):
