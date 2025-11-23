@@ -1,24 +1,23 @@
 import { GeminiResponse } from '../types';
 import { mockGeminiResponse } from '../mockData';
 
-// IMPORTANT: After deploying your backend to Google Cloud Functions,
-// you will get a "Trigger URL". Replace the placeholder below with that URL.
-const FUNCTION_URL = "https://your-region-your-project-id.cloudfunctions.net/suggestions";
+// Runtime configuration:
+// - In production, set FUNCTION_URL to the deployed backend endpoint.
+// - For local development use USE_MOCK_GEMINI=true to return mock data.
+const FUNCTION_URL = process.env.FUNCTION_URL || '';
+const USE_MOCK_GEMINI = process.env.USE_MOCK_GEMINI === 'true';
+const FETCH_TIMEOUT_MS = Number(process.env.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
 
 
 const callApi = async (body: object): Promise<GeminiResponse> => {
-    if (FUNCTION_URL.includes("your-project-id")) {
-        // Instead of throwing an error, we return mock data for previewing in the IDE.
-        // This allows you to test the UI without a live backend.
-        console.warn("Using mock data because FUNCTION_URL is not set. Update services/geminiService.ts for a live backend.");
-        
-        return new Promise((resolve) => {
-            // Simulate network delay for a more realistic loading experience.
-            setTimeout(() => {
-                resolve(mockGeminiResponse);
-            }, 1500);
-        });
+    if (USE_MOCK_GEMINI || !FUNCTION_URL) {
+        console.warn("Using mock data for Gemini (USE_MOCK_GEMINI=true or FUNCTION_URL not set).");
+        return new Promise((resolve) => setTimeout(() => resolve(mockGeminiResponse), 300));
     }
+
+    // Use a timeout wrapper for fetch
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     const response = await fetch(FUNCTION_URL, {
         method: 'POST',
@@ -26,7 +25,10 @@ const callApi = async (body: object): Promise<GeminiResponse> => {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
     });
+
+    clearTimeout(id);
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'An unknown server error occurred.' }));

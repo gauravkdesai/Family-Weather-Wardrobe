@@ -116,28 +116,28 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ weather, tempUnit }) =>
   const WeatherIcon = useMemo(() => getWeatherIconComponent(conditionIcon), [conditionIcon]);
 
   return (
-    <div className="bg-slate-100 dark:bg-slate-700/40 rounded-lg p-4 sm:p-6 w-full">
+    <section
+      className="bg-slate-100 dark:bg-slate-700/40 rounded-lg p-4 sm:p-6 w-full"
+      aria-label={`Weather summary for ${weather.location}`}
+    >
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4 w-full sm:w-auto">
-          <WeatherIcon className="w-16 h-16 flex-shrink-0" />
+          <WeatherIcon className="w-16 h-16 flex-shrink-0" aria-hidden="true" focusable="false" />
           <div className="flex-grow">
             <div className="flex items-center gap-2">
-                <LocationMarkerIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" />
-                <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100">{weather.location}</h2>
+                <LocationMarkerIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden="true" focusable="false" />
+                <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100" id="weather-location">{weather.location}</h2>
             </div>
-            {/* Indent condition to align with location text */}
-            <p className="text-slate-600 dark:text-slate-300 pl-7">{condition}</p>
+            <p className="text-slate-600 dark:text-slate-300 pl-7" aria-describedby="weather-location">{condition}</p>
           </div>
         </div>
         <div className="text-center sm:text-right flex-shrink-0">
-          <p className="text-5xl font-bold text-slate-800 dark:text-slate-100">{displayHigh}°{tempUnit}</p>
-          <p className="text-slate-500 dark:text-slate-400">High / {displayLow}°{tempUnit} Low</p>
+          <p className="text-5xl font-bold text-slate-800 dark:text-slate-100" aria-label={`High temperature: ${displayHigh} degrees ${tempUnit}`}>{displayHigh}°{tempUnit}</p>
+          <p className="text-slate-500 dark:text-slate-400" aria-label={`Low temperature: ${displayLow} degrees ${tempUnit}`}>High / {displayLow}°{tempUnit} Low</p>
         </div>
       </div>
-      
-      {/* Weather Timeline Graph */}
       <WeatherTimeline dayParts={weather.dayParts} tempUnit={tempUnit} />
-    </div>
+    </section>
   );
 };
 

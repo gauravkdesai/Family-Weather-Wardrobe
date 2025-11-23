@@ -6,13 +6,37 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const { z } = require('zod');
 const { callGemini, createDailyPrompt, createTravelPrompt } = require('./geminiClient');
 const winston = require('winston');
 const { LoggingWinston } = require('@google-cloud/logging-winston');
 
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '128kb' }));
+
+// Rate limiting: 100 requests per 15 minutes per IP
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
+// Zod schemas for input validation
+const suggestionSchema = z.object({
+  requestType: z.enum(['geolocation', 'location', 'travel']),
+  family: z.array(z.string()).min(1).optional(),
+  day: z.enum(['today', 'tomorrow']).optional(),
+  schedule: z.string().max(300).optional(),
+  lat: z.number().optional(),
+  lon: z.number().optional(),
+  location: z.string().optional(),
+  destinationAndDuration: z.string().optional(),
+});
 
 // Logging: use Cloud Logging when available and desired
 const logger = winston.createLogger({ level: process.env.LOG_LEVEL || 'info' });
@@ -26,7 +50,12 @@ app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 app.post('/suggestions', async (req, res) => {
   try {
-    const body = req.body || {};
+    const parseResult = suggestionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      logger.warn('Validation failed', { errors: parseResult.error.errors });
+      return res.status(400).json({ error: 'Invalid input', details: parseResult.error.errors });
+    }
+    const body = parseResult.data;
     const { requestType } = body;
 
     let prompt;

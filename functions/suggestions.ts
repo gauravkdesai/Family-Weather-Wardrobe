@@ -2,12 +2,17 @@ import type { HttpFunction } from "@google-cloud/functions-framework";
 import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
 import { GeminiResponse } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set on the server");
-}
+// Prefer ADC (Application Default Credentials) or Secret Manager for production.
+// If an explicit API key is provided (for local development), use it.
+const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
+const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : new GoogleGenAI();
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MAX_RETRIES = 3;
+// Structured logging helper (simple)
+const log = {
+    info: (msg: string, meta?: any) => console.info(JSON.stringify({ level: 'info', msg, ...meta })),
+    error: (msg: string, meta?: any) => console.error(JSON.stringify({ level: 'error', msg, ...meta })),
+};
 
 const responseSchema = {
   type: Type.OBJECT,
@@ -57,67 +62,55 @@ const responseSchema = {
   required: ["weather", "suggestions"],
 };
 
+const jitter = (base: number) => Math.floor(base * (0.5 + Math.random()));
+
 const callGemini = async (prompt: string, useGrounding: boolean = false): Promise<GeminiResponse> => {
-    let lastError: Error | null = null;
-    let responseText: string = '';
+    let lastErr: Error | null = null;
+    let rawText = '';
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const config: GenerateContentParameters['config'] = {};
-            if (useGrounding) {
-                config.tools = [{googleSearch: {}}];
-            } else {
-                config.responseMimeType = "application/json";
-                config.responseSchema = responseSchema;
-            }
+            const config: GenerateContentParameters['config'] = useGrounding ? { tools: [{ googleSearch: {} }] } : { responseMimeType: 'application/json', responseSchema };
 
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
                 contents: prompt,
-                config: config,
+                config,
             });
 
-            responseText = response.text.trim();
-            
-            let jsonString = responseText;
-
-            if (jsonString.startsWith('```json')) {
-                jsonString = jsonString.substring(7, jsonString.length - 3).trim();
+            rawText = (response && response.text) ? response.text.trim() : '';
+            // attempt to extract JSON; be conservative
+            let payload = rawText;
+            if (payload.startsWith('```json')) {
+                payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
             } else {
-                const firstBrace = jsonString.indexOf('{');
-                const lastBrace = jsonString.lastIndexOf('}');
-                if (firstBrace !== -1 && lastBrace > firstBrace) {
-                    jsonString = jsonString.substring(firstBrace, lastBrace + 1);
-                }
+                const b = payload.indexOf('{');
+                const e = payload.lastIndexOf('}');
+                if (b >= 0 && e > b) payload = payload.substring(b, e + 1);
             }
 
-            const parsedJson = JSON.parse(jsonString) as GeminiResponse;
-
-            if (parsedJson.weather) {
-                return parsedJson;
-            } else {
-                throw new Error("Incomplete data returned from model. Retrying...");
+            const parsed = JSON.parse(payload) as GeminiResponse;
+            // Basic validation: must include weather and suggestions
+            if (!parsed || !parsed.weather) {
+                throw new Error('Missing weather object in model output');
             }
-
-        } catch (error) {
-            console.error(`Attempt ${attempt} failed:`, error);
-            lastError = error instanceof Error ? error : new Error(String(error));
-            
+            return parsed;
+        } catch (err) {
+            lastErr = err instanceof Error ? err : new Error(String(err));
+            log.error('callGemini attempt failed', { attempt, error: lastErr.message });
             if (attempt === MAX_RETRIES) {
-                if (error instanceof SyntaxError) {
-                     console.error("Failed to parse JSON on final attempt. Raw response text was:", responseText);
-                     throw new Error(`The model returned an invalid format after ${MAX_RETRIES} retries.`);
-                }
-                throw new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts.`);
+                log.error('callGemini final failure', { rawText });
+                throw new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts: ${lastErr.message}`);
             }
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            // jittered exponential backoff
+            const waitMs = jitter(500 * Math.pow(2, attempt));
+            await new Promise(r => setTimeout(r, waitMs));
         }
     }
-    
-    throw lastError || new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts.`);
-}
+    throw lastErr || new Error('Unknown failure calling Gemini');
+};
 
-const createDailyPrompt = (family: string[], day: 'today' | 'tomorrow', rawschedule?: string, locationInfo?: { lat: number, lon: number } | { location: string }): string => {
+export const createDailyPrompt = (family: string[], day: 'today' | 'tomorrow', rawschedule?: string, locationInfo?: { lat: number, lon: number } | { location: string }): string => {
     const schedule = rawschedule ? rawschedule.substring(0, 300) : '';
 
     const schedulePromptPart = schedule && schedule.trim() ? ` The user has provided a schedule: "${schedule}". Suggestions MUST be tailored to these activities.` : '';
@@ -155,7 +148,7 @@ Clothing suggestions must be practical for the full day's temperature range and 
 `;
 };
 
-const createTravelPrompt = (destinationAndDuration: string, family: string[]): string => {
+export const createTravelPrompt = (destinationAndDuration: string, family: string[]): string => {
     return `Using real-time, live weather data from Google Search for an upcoming trip to ${destinationAndDuration}, provide a weather summary and a detailed packing list for a family consisting of: ${family.join(', ')}.
 The response MUST be a single, valid JSON object and nothing else. Do not include markdown formatting or any other text outside the JSON.
 The JSON object must have two top-level keys: "weather" and "suggestions".

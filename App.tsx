@@ -16,6 +16,12 @@ import TempUnitToggle from './components/TempUnitToggle';
 const FAMILY_STORAGE_key = 'familyWeatherWardrobeFamily';
 const TRAVEL_CALENDAR_STORAGE_key = 'familyWeatherWardrobeTravelCalendarConnected';
 const TEMP_UNIT_STORAGE_KEY = 'familyWeatherWardrobeTempUnit';
+const DEFAULT_FAMILY_STATE = [
+  { name: 'Adult', pinned: true },
+  { name: 'Child (5-12)', pinned: false },
+  { name: 'Toddler (1-4)', pinned: false },
+  { name: 'Baby (0-1)', pinned: false },
+];
 
 // FIX: Define the missing ErrorMessage component.
 const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
@@ -108,17 +114,15 @@ const App: React.FC = () => {
       console.error("Failed to parse family data from localStorage", e);
     }
     // New default state, pre-sorted and gender-neutral
-    return [
-      { name: 'Adult', pinned: true },
-      { name: 'Child (5-12)', pinned: false },
-      { name: 'Toddler (1-4)', pinned: false },
-      { name: 'Baby (0-1)', pinned: false },
-    ];
+    return DEFAULT_FAMILY_STATE;
   });
+  // Region-based temp unit: auto-switch to 'F' for US, 'C' elsewhere, but allow manual override
   const [tempUnit, setTempUnit] = useState<'C' | 'F'>(() => {
     const storedUnit = localStorage.getItem(TEMP_UNIT_STORAGE_KEY);
     return (storedUnit === 'C' || storedUnit === 'F') ? storedUnit : 'C';
   });
+  // Track if user manually toggled unit
+  const [manualTempUnit, setManualTempUnit] = useState<boolean>(false);
   
   const resultsRef = useRef<HTMLDivElement>(null);
   const travelResultsRef = useRef<HTMLDivElement>(null);
@@ -127,6 +131,23 @@ const App: React.FC = () => {
   const [isTravelCalendarConnected, setTravelCalendarConnected] = useState<boolean>(() => {
      return localStorage.getItem(TRAVEL_CALENDAR_STORAGE_key) === 'true';
   });
+
+  // Clear local preferences without reloading: remove localStorage keys and reset in-memory state
+  const clearLocalPreferences = useCallback(() => {
+    try {
+      localStorage.removeItem(FAMILY_STORAGE_key);
+      localStorage.removeItem(TEMP_UNIT_STORAGE_KEY);
+      localStorage.removeItem(TRAVEL_CALENDAR_STORAGE_key);
+    } catch (e) {
+      console.error('Failed to remove local preferences', e);
+    }
+
+    // Reset in-memory state to defaults
+    setFamily(DEFAULT_FAMILY_STATE);
+    setTempUnit('C');
+    setManualTempUnit(false);
+    setTravelCalendarConnected(false);
+  }, [setFamily, setTempUnit, setManualTempUnit, setTravelCalendarConnected]);
 
 
   useEffect(() => {
@@ -140,6 +161,20 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(TEMP_UNIT_STORAGE_KEY, tempUnit);
   }, [tempUnit]);
+
+  // Helper: infer region from location string (simple country/US zip detection)
+  function inferRegionUnit(location: string): 'C' | 'F' {
+    // US, Bahamas, Belize, Cayman, Palau, etc. use °F
+    // For now, only auto-switch for US (zip or "United States"/"USA")
+    if (!location) return 'C';
+    const usZip = /^\d{5}(-\d{4})?$/;
+    const usNames = ["united states", "usa", "us", "puerto rico", "guam", "american samoa", "virgin islands", "northern mariana islands"];
+    const locLower = location.toLowerCase();
+    if (usZip.test(location.trim()) || usNames.some(n => locLower.includes(n))) return 'F';
+    // Canada: mostly °C, but some border regions use °F; for simplicity, default to °C
+    // Add more regions as needed
+    return 'C';
+  }
 
   useEffect(() => {
     if (data && !dailyLoadingMessage) {
@@ -191,24 +226,28 @@ const App: React.FC = () => {
     }, 2500);
 
     const performManualSearch = async () => {
-        if (!manualLocationInput.trim()) {
-            setError("Please enter a location to get suggestions.");
-            if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-            setDailyLoadingMessage(null);
-            return;
+      if (!manualLocationInput.trim()) {
+        setError("Please enter a location to get suggestions.");
+        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+        setDailyLoadingMessage(null);
+        return;
+      }
+      try {
+        const result = await getWeatherAndClothingSuggestionsForLocation(manualLocationInput, familyNames, day, dailyScheduleInput);
+        if (result?.suggestions) {
+          result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
         }
-        try {
-            const result = await getWeatherAndClothingSuggestionsForLocation(manualLocationInput, familyNames, day, dailyScheduleInput);
-            if (result?.suggestions) {
-                result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-            }
-            setData(result);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "An unknown error occurred.");
-        } finally {
-            if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-            setDailyLoadingMessage(null);
+        setData(result);
+        // Auto-switch temp unit based on region unless manually set
+        if (result?.weather?.location && !manualTempUnit) {
+          setTempUnit(inferRegionUnit(result.weather.location));
         }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+      } finally {
+        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+        setDailyLoadingMessage(null);
+      }
     };
     
     if (showManualLocation) {
@@ -239,13 +278,16 @@ const App: React.FC = () => {
         try {
           const { latitude, longitude } = position.coords;
           const result = await getWeatherAndClothingSuggestions(latitude, longitude, familyNames, day, dailyScheduleInput);
-          
           if (result?.suggestions) {
             result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
           }
           setData(result);
           setShowManualLocation(false); 
           setManualLocationInput('');
+          // Auto-switch temp unit based on region unless manually set
+          if (result?.weather?.location && !manualTempUnit) {
+            setTempUnit(inferRegionUnit(result.weather.location));
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : "An unknown error occurred.");
         } finally {
@@ -297,16 +339,20 @@ const App: React.FC = () => {
     }, 2500);
     
     try {
-        const result = await getTravelClothingSuggestions(travelInput, familyNames);
-        if (result?.suggestions) {
-            result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-        }
-        setTravelData(result);
+      const result = await getTravelClothingSuggestions(travelInput, familyNames);
+      if (result?.suggestions) {
+        result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+      }
+      setTravelData(result);
+      // Auto-switch temp unit based on region unless manually set
+      if (result?.weather?.location && !manualTempUnit) {
+        setTempUnit(inferRegionUnit(result.weather.location));
+      }
     } catch (err) {
-        setTravelError(err instanceof Error ? err.message : "An unknown error occurred.");
+      setTravelError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
-        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-        setTravelLoadingMessage(null);
+      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+      setTravelLoadingMessage(null);
     }
   }, [travelInput, family]);
 
@@ -331,7 +377,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Allow location access?</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Family Weather Wardrobe would like to use your device's location to show local weather and personalized outfit suggestions. We only use your location to fetch weather and do not store precise coordinates.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Family Weather Wardrobe would like to use your device's location to show local weather and personalized outfit suggestions. We only use your location to fetch weather and do not store precise coordinates. We may infer your region from the location to auto-select Celsius or Fahrenheit for display; this inferred preference is stored locally in your browser's storage and can be overridden at any time using the temperature unit toggle. If you prefer not to share your location, you can enter a location manually instead.</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => {
@@ -364,7 +410,10 @@ const App: React.FC = () => {
                 <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-800 dark:text-white">
                   Family Weather Wardrobe
                 </h1>
-                <TempUnitToggle unit={tempUnit} onToggle={setTempUnit} />
+                <TempUnitToggle unit={tempUnit} onToggle={unit => {
+                  setTempUnit(unit);
+                  setManualTempUnit(true);
+                }} />
             </div>
             <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
               AI-powered clothing advice for today's weather or your next trip.
@@ -510,7 +559,7 @@ const App: React.FC = () => {
           Disclaimer: The clothing and weather information provided is AI-generated. Please verify local weather conditions independently and dress appropriately. You are responsible for your own safety and comfort.
         </p>
       </footer>
-      {isConfigOpen && <FamilyConfigModal family={family} setFamily={setFamily} onClose={() => setIsConfigOpen(false)} />}
+      {isConfigOpen && <FamilyConfigModal family={family} setFamily={setFamily} onClose={() => setIsConfigOpen(false)} clearLocalPreferences={clearLocalPreferences} />}
     </div>
   );
 };
