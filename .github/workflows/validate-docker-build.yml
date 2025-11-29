@@ -1,0 +1,37 @@
+name: Validate Docker Compose Production Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate-build:
+    name: Validate prod docker-compose build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show lockfile status (diagnostic)
+        run: |
+          echo "=== repo root lockfile ==="
+          if [ -f package-lock.json ]; then ls -l package-lock.json; else echo "package-lock.json: MISSING"; fi
+          echo "=== backend lockfile ==="
+          if [ -f backend/package-lock.json ]; then ls -l backend/package-lock.json; else echo "backend/package-lock.json: MISSING"; fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Ensure docker and docker compose are available
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Build production images (fail fast if lockfiles missing)
+        env:
+          DOCKER_BUILDKIT: 1
+        run: |
+          # Run the compose build; Dockerfiles explicitly require lockfiles and will fail otherwise.
+          docker compose -f docker-compose.prod.yml build --pull

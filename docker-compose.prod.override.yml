@@ -1,0 +1,11 @@
+# Optional override for production compose to mount Google service account credentials
+# Usage:
+#   export GOOGLE_CREDENTIALS_PATH=/path/to/your/service-account.json
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.override.yml up -d --build
+
+services:
+  backend:
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcloud_key.json
+    volumes:
+      - ${GOOGLE_CREDENTIALS_PATH}:/secrets/gcloud_key.json:ro

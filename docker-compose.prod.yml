@@ -1,0 +1,27 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: family-weather-wardrobe-frontend:prod
+    environment:
+      # Set the frontend runtime FUNCTION_URL to point to the backend or a cloud URL
+      - FUNCTION_URL=${FUNCTION_URL:-http://backend:8080/suggestions}
+      - USE_MOCK_GEMINI=${USE_MOCK_GEMINI:-false}
+    ports:
+      - "8080:80"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: family-weather-wardrobe-backend:prod
+    environment:
+      - PORT=8080
+      - USE_GCLOUD_LOGGING=false
+      - NODE_ENV=production
+      - USE_MOCK_GEMINI=${USE_MOCK_GEMINI:-false}
+      # Optional: path inside the container where the service account JSON will be mounted.
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/secrets/gcloud_key.json}
+    ports:
+      - "8081:8080"

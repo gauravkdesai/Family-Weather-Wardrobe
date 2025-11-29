@@ -1,12 +1,32 @@
 import { GeminiResponse } from '../types';
 import { mockGeminiResponse } from '../mockData';
 
-// Runtime configuration:
-// - In production, set FUNCTION_URL to the deployed backend endpoint.
-// - For local development use USE_MOCK_GEMINI=true to return mock data.
-const FUNCTION_URL = process.env.FUNCTION_URL || '';
-const USE_MOCK_GEMINI = process.env.USE_MOCK_GEMINI === 'true';
-const FETCH_TIMEOUT_MS = Number(process.env.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
+// Runtime configuration helpers. Prefer Vite's `import.meta.env` in the browser,
+// fall back to `process.env` for Node, or `window.__ENV` if populated by hosting.
+function getEnv(): Record<string, any> {
+    try {
+        // Vite exposes variables on import.meta.env
+        // Access in a try/catch to avoid syntax/runtime errors in non-Vite environments.
+        // @ts-ignore
+        const m = (import.meta as any);
+        if (m && m.env) return m.env;
+    } catch (e) {
+        // ignore
+    }
+    if (typeof process !== 'undefined' && (process as any).env) {
+        return (process as any).env;
+    }
+    if (typeof window !== 'undefined' && (window as any).__ENV) {
+        return (window as any).__ENV;
+    }
+    return {};
+}
+
+const ENV = getEnv();
+// Support Vite-style names (`VITE_FUNCTION_URL`) as well as plain `FUNCTION_URL`.
+const FUNCTION_URL = (ENV.VITE_FUNCTION_URL ?? ENV.FUNCTION_URL ?? '') as string;
+const USE_MOCK_GEMINI = (ENV.VITE_USE_MOCK_GEMINI ?? ENV.USE_MOCK_GEMINI ?? '') === 'true';
+const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
 
 
 const callApi = async (body: object): Promise<GeminiResponse> => {

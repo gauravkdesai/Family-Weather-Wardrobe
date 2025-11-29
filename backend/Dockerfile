@@ -1,8 +1,14 @@
 # Backend Dockerfile
 FROM node:20-slim AS build
 WORKDIR /usr/src/app
-COPY backend/package.json backend/package-lock.json* ./
-RUN npm ci --production --no-audit --prefer-offline
+COPY backend/package.json backend/package-lock.json ./
+# Require lockfile for production builds to keep installs deterministic and fast.
+RUN if [ -f package-lock.json ]; then \
+			npm ci --production --no-audit --prefer-offline; \
+		else \
+			echo "ERROR: backend/package-lock.json missing. Commit the lockfile to ensure deterministic builds." >&2; \
+			exit 1; \
+		fi
 COPY backend/ .
 
 FROM node:20-slim AS runtime

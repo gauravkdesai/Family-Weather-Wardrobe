@@ -38,7 +38,10 @@ gcloud builds submit --config=cloudbuild.yaml \
 
 Notes:
 - `cloudbuild.yaml` pushes to Artifact Registry in the format `${_REGION}-docker.pkg.dev/YOUR_PROJECT/${_AR_REPO}/{frontend,backend}:$SHORT_SHA`.
-- For GitHub Actions you can provide a service account key in `secrets.GCP_SA_KEY` and the workflows will call `gcloud builds submit` using that key.
+- For GitHub Actions we recommend Workload Identity Federation (WIF) instead of storing a service account key in repository secrets. Configure the OIDC provider and add these repository secrets:
+	- `WORKLOAD_IDENTITY_PROVIDER` (the full provider resource)
+	- `GCP_SA` (service account email to impersonate for CI deploys)
+	- `GCP_PROJECT`, `GCP_REGION`, `ARTIFACT_REGISTRY_REPO`
 
 Manual Cloud Run deploy (optional)
 ```

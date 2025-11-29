@@ -10,7 +10,6 @@ const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const { callGemini, createDailyPrompt, createTravelPrompt } = require('./geminiClient');
 const winston = require('winston');
-const { LoggingWinston } = require('@google-cloud/logging-winston');
 
 
 const app = express();
@@ -41,7 +40,14 @@ const suggestionSchema = z.object({
 // Logging: use Cloud Logging when available and desired
 const logger = winston.createLogger({ level: process.env.LOG_LEVEL || 'info' });
 if (process.env.USE_GCLOUD_LOGGING === 'true') {
-  logger.add(new LoggingWinston());
+  try {
+    const { LoggingWinston } = require('@google-cloud/logging-winston');
+    logger.add(new LoggingWinston());
+  } catch (e) {
+    // If the package is not available at runtime, fall back to console logging.
+    logger.warn('Could not load @google-cloud/logging-winston; falling back to console', { error: e && e.message ? e.message : String(e) });
+    logger.add(new winston.transports.Console({ format: winston.format.json() }));
+  }
 } else {
   logger.add(new winston.transports.Console({ format: winston.format.json() }));
 }

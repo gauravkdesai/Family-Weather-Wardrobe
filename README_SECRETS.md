@@ -127,9 +127,15 @@ Access the secret at runtime in your backend code like:
 const apiKey = process.env.GOOGLE_API_KEY;
 if (!apiKey) {
   console.warn('GOOGLE_API_KEY not set');
+Important security notes
+ - Do NOT embed API keys or secrets in source or Docker images.
+ - Use Secret Manager for secrets and give Cloud Run service accounts only `roles/secretmanager.secretAccessor`.
+ - Prefer Workload Identity / service accounts over long-lived JSON keys.
 }
-// pass apiKey to Gemini client or use ADC
-```
+   # Use Workload Identity Federation in GitHub Actions (preferred) by
+   # providing `WORKLOAD_IDENTITY_PROVIDER` and `GCP_SA` repository secrets.
+   # If you must use a service account key, provide it in `GCP_SA_KEY` (not recommended).
+   project_id: ${{ secrets.GCP_PROJECT }}
 
 9) Security best practices
 - Prefer Workload Identity / ADC over API keys; when running on GCP, the Google GenAI client can use ADC and you may not need an API key.
