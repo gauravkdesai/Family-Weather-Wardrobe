@@ -1,20 +1,22 @@
 /*
- * A lightweight Gemini client module for the backend.
- * - Prefers Application Default Credentials (ADC) for production (no API key in code).
- * - Falls back to API key if `GOOGLE_API_KEY` is provided (useful for local dev only).
+ * A lightweight Gemini client module for the backend using Vertex AI.
+ * - Uses Application Default Credentials (ADC) - no API keys needed!
+ * - Falls back to mock mode if USE_MOCK_GEMINI=true for local dev.
  */
-const { GoogleGenAI, Type } = require("@google/genai");
+const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/vertexai');
 
 const MAX_RETRIES = 3;
+const PROJECT_ID = process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'gen-lang-client-0325151027';
+const LOCATION = process.env.REGION || 'europe-west6';
 
 function buildResponseSchema() {
   return {
-    type: Type.OBJECT,
+    type: 'OBJECT',
     properties: {
-      weather: { type: Type.OBJECT },
-      suggestions: { type: Type.ARRAY }
+      weather: { type: 'OBJECT' },
+      suggestions: { type: 'ARRAY' }
     },
-    required: ["weather", "suggestions"]
+    required: ['weather', 'suggestions']
   };
 }
 
@@ -43,22 +45,15 @@ const createClient = () => {
     };
 
     return {
-      models: {
-        generateContent: async () => ({ text: JSON.stringify(MOCK_RESPONSE) })
-      }
+      generateContent: async () => ({ response: { candidates: [{ content: { parts: [{ text: JSON.stringify(MOCK_RESPONSE) }] } }] } })
     };
   }
-  if (process.env.GOOGLE_API_KEY) {
-    // Local development option. Prefer ADC in production.
-    return new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
-  }
-  // Use ADC (service account / Workload Identity) when deployed on GCP.
-  // Pass an empty options object to avoid downstream libraries reading properties
-  // off an undefined `options` parameter (defensive against older library behavior).
+  // Use Vertex AI with ADC (service account / Workload Identity) when deployed on GCP.
   try {
-    return new GoogleGenAI({});
+    const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+    return vertexAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
   } catch (e) {
-    console.warn('GoogleGenAI client construction failed, falling back to mock client:', e && e.message ? e.message : e);
+    console.warn('VertexAI client construction failed, falling back to mock client:', e && e.message ? e.message : e);
     // Provide a lightweight mock client so the server can continue running in dev.
     const MOCK_RESPONSE = {
       weather: {
@@ -78,14 +73,12 @@ const createClient = () => {
       ],
     };
     return {
-      models: {
-        generateContent: async () => ({ text: JSON.stringify(MOCK_RESPONSE) })
-      }
+      generateContent: async () => ({ response: { candidates: [{ content: { parts: [{ text: JSON.stringify(MOCK_RESPONSE) }] } }] } })
     };
   }
 };
 
-const ai = createClient();
+const model = createClient();
 
 const callGemini = async (prompt, useGrounding = false) => {
   let lastError = null;
@@ -93,22 +86,32 @@ const callGemini = async (prompt, useGrounding = false) => {
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const config = {};
+      const generationConfig = {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+      };
+      
       if (!useGrounding) {
-        config.responseMimeType = 'application/json';
-        config.responseSchema = buildResponseSchema();
-      } else {
-        // Example: enable search tool if needed
-        config.tools = [{ googleSearch: {} }];
+        generationConfig.responseMimeType = 'application/json';
+        generationConfig.responseSchema = buildResponseSchema();
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config,
-      });
+      const tools = useGrounding ? [{ googleSearch: {} }] : [];
 
-      responseText = (response.text || '').trim();
+      const request = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig,
+      };
+      
+      if (tools.length > 0) {
+        request.tools = tools;
+      }
+
+      const response = await model.generateContent(request);
+      const candidate = response.response.candidates[0];
+      responseText = (candidate.content.parts[0].text || '').trim();
 
       // Extract JSON string heuristically
       let jsonString = responseText;
