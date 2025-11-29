@@ -4,22 +4,22 @@ import { mockGeminiResponse } from '../mockData';
 // Runtime configuration helpers. Prefer Vite's `import.meta.env` in the browser,
 // fall back to `process.env` for Node, or `window.__ENV` if populated by hosting.
 function getEnv(): Record<string, any> {
+    const merged: Record<string, any> = {};
+    // Build-time (Vite) env vars (VITE_*)
     try {
-        // Vite exposes variables on import.meta.env
-        // Access in a try/catch to avoid syntax/runtime errors in non-Vite environments.
         // @ts-ignore
         const m = (import.meta as any);
-        if (m && m.env) return m.env;
-    } catch (e) {
-        // ignore
-    }
-    if (typeof process !== 'undefined' && (process as any).env) {
-        return (process as any).env;
-    }
+        if (m && m.env) Object.assign(merged, m.env);
+    } catch (_) { /* ignore */ }
+    // Runtime window-injected vars (env.js written by container entrypoint)
     if (typeof window !== 'undefined' && (window as any).__ENV) {
-        return (window as any).__ENV;
+        Object.assign(merged, (window as any).__ENV);
     }
-    return {};
+    // Process env (Node SSR / fallback)
+    if (typeof process !== 'undefined' && (process as any).env) {
+        Object.assign(merged, (process as any).env);
+    }
+    return merged;
 }
 
 const ENV = getEnv();
