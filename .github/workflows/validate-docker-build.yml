@@ -22,7 +22,7 @@ jobs:
           if [ -f backend/package-lock.json ]; then ls -l backend/package-lock.json; else echo "backend/package-lock.json: MISSING"; fi
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Ensure docker and docker compose are available
         run: |
