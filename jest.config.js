@@ -3,7 +3,12 @@ module.exports = {
   testEnvironment: 'jsdom',
   testMatch: ['**/__tests__/**/*.test.(ts|tsx|js)'],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: {
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true
+      }
+    }]
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   // Map ESM-only modules to our manual mocks for Jest
@@ -11,5 +16,7 @@ module.exports = {
     '^@google/genai$': '<rootDir>/__mocks__/@google/genai.js'
   },
   // In some environments we may need to increase the default timeout
-  testTimeout: 10000
+  testTimeout: 10000,
+  // Handle ESM modules better
+  extensionsToTreatAsEsm: ['.ts', '.tsx']
 };
