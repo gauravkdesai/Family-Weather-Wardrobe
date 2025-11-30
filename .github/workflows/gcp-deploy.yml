@@ -38,7 +38,7 @@ jobs:
 
       - name: Setup gcloud CLI
         if: steps.check_secrets.outputs.configured == 'true'
-        uses: google-github-actions/setup-gcloud@v1
+        uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: ${{ secrets.GCP_PROJECT }}
           export_default_credentials: true
