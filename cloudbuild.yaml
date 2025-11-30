@@ -36,6 +36,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-backend'
     waitFor: ['push-backend']
+    entrypoint: 'gcloud'
     args:
       - 'run'
       - 'deploy'
@@ -50,6 +51,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-frontend'
     waitFor: ['push-frontend']
+    entrypoint: 'gcloud'
     args:
       - 'run'
       - 'deploy'
