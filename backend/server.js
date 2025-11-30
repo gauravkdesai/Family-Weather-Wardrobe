@@ -86,7 +86,7 @@ app.post('/suggestions', async (req, res) => {
         return;
     }
 
-    const result = await callGemini(prompt, true);
+    const result = await callGemini(prompt, false);
     res.json(result);
   } catch (err) {
     logger.error('Suggestion error', { error: err && err.message ? err.message : String(err) });
