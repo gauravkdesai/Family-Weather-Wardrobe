@@ -30,6 +30,8 @@ const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTI
 
 
 const callApi = async (body: object): Promise<GeminiResponse> => {
+    console.log('callApi - FUNCTION_URL:', FUNCTION_URL, 'USE_MOCK_GEMINI:', USE_MOCK_GEMINI);
+    console.log('callApi - ENV object keys:', Object.keys(ENV));
     if (USE_MOCK_GEMINI || !FUNCTION_URL) {
         console.warn("Using mock data for Gemini (USE_MOCK_GEMINI=true or FUNCTION_URL not set).");
         return new Promise((resolve) => setTimeout(() => resolve(mockGeminiResponse), 300));
