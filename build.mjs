@@ -41,6 +41,10 @@ try {
         await cp('index.css', 'dist/index.css');
         // Copy manifest and icons so nginx can serve them
         await cp('manifest.json', 'dist/manifest.json');
+        // Copy env.js from public folder
+        await cp('public/env.js', 'dist/env.js');
+        // Copy CNAME for GitHub Pages custom domain
+        await cp('public/CNAME', 'dist/CNAME');
         // Copy icons folder recursively if it exists
         try {
             await cp('icons', 'dist/icons', { recursive: true });

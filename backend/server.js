@@ -15,15 +15,40 @@ const winston = require('winston');
 const app = express();
 // Trust proxy for Cloud Run (required for rate limiting with X-Forwarded-For)
 app.set('trust proxy', true);
-app.use(cors());
+
+// Allowed origins for CORS (only your domains)
+const allowedOrigins = [
+  'https://weather-appropriate-wardrobe.gaurav-desai.com',
+  'https://gauravkdesai.github.io',
+  'http://localhost:5173',  // Local development with Vite
+  'http://localhost:3000',  // Local development alternatives
+];
+
+// CORS configuration - only allow requests from specific origins
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      logger.warn('Blocked request from unauthorized origin', { origin });
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
+
 app.use(bodyParser.json({ limit: '128kb' }));
 
-// Rate limiting: 100 requests per 15 minutes per IP
+// Rate limiting: 100 requests per hour per IP
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 60 * 1000, // 1 hour
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
 });
 app.use(limiter);
 
