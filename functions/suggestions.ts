@@ -6,7 +6,7 @@ import { GeminiResponse } from '../types';
 // If an explicit API key is provided (for local development), use it.
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
 const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : new GoogleGenAI();
+const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : new GoogleGenAI({} as any); // ADC in production
 
 // Structured logging helper (simple)
 const log = {

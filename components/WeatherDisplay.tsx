@@ -122,10 +122,10 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ weather, tempUnit }) =>
     >
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4 w-full sm:w-auto">
-          <WeatherIcon className="w-16 h-16 flex-shrink-0" aria-hidden="true" focusable="false" />
+          <WeatherIcon className="w-16 h-16 flex-shrink-0" aria-hidden="true" />
           <div className="flex-grow">
             <div className="flex items-center gap-2">
-                <LocationMarkerIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden="true" focusable="false" />
+                <LocationMarkerIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                 <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100" id="weather-location">{weather.location}</h2>
             </div>
             <p className="text-slate-600 dark:text-slate-300 pl-7" aria-describedby="weather-location">{condition}</p>
