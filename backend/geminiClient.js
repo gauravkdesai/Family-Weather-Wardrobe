@@ -126,10 +126,13 @@ const callGemini = async (prompt, useGrounding = false) => {
       }
 
       const parsed = JSON.parse(jsonString);
-      if (parsed && parsed.weather) {
+      console.log('Gemini raw response:', responseText.substring(0, 200));
+      console.log('Parsed data:', JSON.stringify({ hasWeather: !!parsed.weather, weatherKeys: Object.keys(parsed.weather || {}), suggestionCount: (parsed.suggestions || []).length }));
+      
+      if (parsed && parsed.weather && Object.keys(parsed.weather).length > 0) {
         return parsed;
       }
-      throw new Error('Model returned incomplete data');
+      throw new Error('Model returned incomplete data: weather object is empty');
     } catch (err) {
       console.error(`Gemini attempt ${attempt} failed:`, err);
       lastError = err;

@@ -13,6 +13,8 @@ const winston = require('winston');
 
 
 const app = express();
+// Trust proxy for Cloud Run (required for rate limiting with X-Forwarded-For)
+app.set('trust proxy', true);
 app.use(cors());
 app.use(bodyParser.json({ limit: '128kb' }));
 
@@ -87,6 +89,7 @@ app.post('/suggestions', async (req, res) => {
     }
 
     const result = await callGemini(prompt, false);
+    logger.info('Gemini response', { hasWeather: !!result.weather, hasSuggestions: !!result.suggestions });
     res.json(result);
   } catch (err) {
     logger.error('Suggestion error', { error: err && err.message ? err.message : String(err) });
