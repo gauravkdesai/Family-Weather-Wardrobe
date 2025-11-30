@@ -8,7 +8,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
-const { callGemini, createDailyPrompt, createTravelPrompt } = require('./geminiClient');
+const { getWeatherData, getClothingSuggestions, mapConditionToIcon, createWeatherPrompt, createClothingPrompt, createTravelWeatherPrompt, createTravelClothingPrompt } = require('./geminiClient');
 const winston = require('winston');
 
 
@@ -66,21 +66,31 @@ app.post('/suggestions', async (req, res) => {
     const body = parseResult.data;
     const { requestType } = body;
 
-    let prompt;
+    let weatherPrompt;
+    let clothingPrompt;
+    let family;
+    let schedule;
+
+    // Step 1: Get weather data with Google Search
     switch (requestType) {
       case 'geolocation': {
-        const { lat, lon, family, day, schedule } = body;
-        prompt = createDailyPrompt(family, day, schedule, { lat, lon });
+        const { lat, lon, family: fam, day, schedule: sched } = body;
+        family = fam;
+        schedule = sched;
+        weatherPrompt = createWeatherPrompt(day, { lat, lon });
         break;
       }
       case 'location': {
-        const { location, family, day, schedule } = body;
-        prompt = createDailyPrompt(family, day, schedule, { location });
+        const { location, family: fam, day, schedule: sched } = body;
+        family = fam;
+        schedule = sched;
+        weatherPrompt = createWeatherPrompt(day, { location });
         break;
       }
       case 'travel': {
-        const { destinationAndDuration, family } = body;
-        prompt = createTravelPrompt(destinationAndDuration, family);
+        const { destinationAndDuration, family: fam } = body;
+        family = fam;
+        weatherPrompt = createTravelWeatherPrompt(destinationAndDuration);
         break;
       }
       default:
@@ -88,8 +98,62 @@ app.post('/suggestions', async (req, res) => {
         return;
     }
 
-    const result = await callGemini(prompt, false);
-    logger.info('Gemini response', { hasWeather: !!result.weather, hasSuggestions: !!result.suggestions });
+    logger.info('Fetching weather data with Google Search');
+    const weatherData = await getWeatherData(weatherPrompt);
+
+    // Step 2: Get clothing suggestions from Gemini
+    logger.info('Generating clothing suggestions');
+    if (requestType === 'travel') {
+      clothingPrompt = createTravelClothingPrompt(family, weatherData);
+    } else {
+      clothingPrompt = createClothingPrompt(family, weatherData, schedule);
+    }
+    const suggestions = await getClothingSuggestions(clothingPrompt);
+
+    // Step 3: Construct response with FIXED times
+    const dayParts = [
+      {
+        period: 'Morning',
+        time: '07:00',
+        temp: weatherData.temp07,
+        condition: weatherData.condition07,
+        conditionIcon: mapConditionToIcon(weatherData.condition07)
+      },
+      {
+        period: 'Afternoon',
+        time: '12:00',
+        temp: weatherData.temp12,
+        condition: weatherData.condition12,
+        conditionIcon: mapConditionToIcon(weatherData.condition12)
+      },
+      {
+        period: 'Evening',
+        time: '17:00',
+        temp: weatherData.temp17,
+        condition: weatherData.condition17,
+        conditionIcon: mapConditionToIcon(weatherData.condition17)
+      },
+      {
+        period: 'Night',
+        time: '22:00',
+        temp: weatherData.temp22,
+        condition: weatherData.condition22,
+        conditionIcon: mapConditionToIcon(weatherData.condition22)
+      }
+    ];
+
+    const result = {
+      weather: {
+        location: weatherData.location,
+        highTemp: weatherData.highTemp,
+        lowTemp: weatherData.lowTemp,
+        dayParts,
+        ...(weatherData.dateRange && { dateRange: weatherData.dateRange })
+      },
+      suggestions
+    };
+
+    logger.info('Response constructed', { hasWeather: !!result.weather, hasSuggestions: !!result.suggestions });
     res.json(result);
   } catch (err) {
     logger.error('Suggestion error', { error: err && err.message ? err.message : String(err) });
