@@ -7,7 +7,7 @@ const { VertexAI, HarmCategory, HarmBlockThreshold } = require('@google-cloud/ve
 
 const MAX_RETRIES = 3;
 const PROJECT_ID = process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || 'gen-lang-client-0325151027';
-const LOCATION = process.env.REGION || 'europe-west6';
+const LOCATION = process.env.VERTEX_AI_LOCATION || 'us-central1';
 
 function buildResponseSchema() {
   return {
