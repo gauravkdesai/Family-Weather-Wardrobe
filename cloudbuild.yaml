@@ -6,8 +6,8 @@ substitutions:
   _AR_REPO: 'family-weather-wardrobe-repo'
   _FRONTEND_SERVICE: 'frontend-service'
   _BACKEND_SERVICE: 'backend-service'
-  _DEPLOYER_SA_EMAIL: 'cloud-run-deployer-sa@$PROJECT_ID.iam.gserviceaccount.com'
-  _CLOUD_RUN_SA: 'wardrobe-backend-sa@$PROJECT_ID.iam.gserviceaccount.com'
+  _PROJECT_ID: '$PROJECT_ID'
+  _BACKEND_SA: 'wardrobe-backend-sa@$PROJECT_ID.iam.gserviceaccount.com'
 
 steps:
   # Build backend image (parallel step 1)
@@ -36,32 +36,29 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-backend'
     waitFor: ['push-backend']
-    entrypoint: 'bash'
     args:
-      - '-c'
-      - |
-        gcloud run deploy ${_BACKEND_SERVICE} \
-          --image ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
-          --region ${_REGION} \
-          --platform managed \
-          --service-account wardrobe-backend-sa@$$PROJECT_ID.iam.gserviceaccount.com \
-          --allow-unauthenticated
+      - 'run'
+      - 'deploy'
+      - '${_BACKEND_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--service-account=${_BACKEND_SA}'
+      - '--allow-unauthenticated'
 
   # Deploy frontend to Cloud Run (parallel with backend deploy)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-frontend'
     waitFor: ['push-frontend']
-    entrypoint: 'bash'
     args:
-      - '-c'
-      - |
-        BACKEND_URL="https://${_BACKEND_SERVICE}-240111074752.${_REGION}.run.app"
-        gcloud run deploy ${_FRONTEND_SERVICE} \
-          --image ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA} \
-          --region ${_REGION} \
-          --platform managed \
-          --allow-unauthenticated \
-          --set-env-vars="FUNCTION_URL=$${BACKEND_URL}"
+      - 'run'
+      - 'deploy'
+      - '${_FRONTEND_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=FUNCTION_URL=https://${_BACKEND_SERVICE}-240111074752.${_REGION}.run.app'
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}'
