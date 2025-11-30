@@ -42,6 +42,11 @@ This builds and deploys to GitHub Pages. First-time setup requires:
    - Value: `gauravkdesai.github.io`
    - TTL: `3600` (or default)
 
+   Optional (to support `www.weather-appropriate-wardrobe.gaurav-desai.com`):
+   - Type: `CNAME`
+   - Name: `www.weather-appropriate-wardrobe`
+   - Value: `weather-appropriate-wardrobe.gaurav-desai.com`
+
 2. **Configure in GitHub**:
    - Go to: https://github.com/gauravkdesai/Family-Weather-Wardrobe/settings/pages
    - Under "Custom domain", enter: `weather-appropriate-wardrobe.gaurav-desai.com`
@@ -50,7 +55,9 @@ This builds and deploys to GitHub Pages. First-time setup requires:
 3. **Verify**: 
    ```bash
    dig weather-appropriate-wardrobe.gaurav-desai.com CNAME
+   dig www.weather-appropriate-wardrobe.gaurav-desai.com CNAME
    # Should show: weather-appropriate-wardrobe.gaurav-desai.com. 3600 IN CNAME gauravkdesai.github.io.
+   # And: www.weather-appropriate-wardrobe.gaurav-desai.com. 3600 IN CNAME weather-appropriate-wardrobe.gaurav-desai.com.
    ```
 
 ## Testing Locally

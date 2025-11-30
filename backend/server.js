@@ -19,6 +19,7 @@ app.set('trust proxy', true);
 // Allowed origins for CORS (only your domains)
 const allowedOrigins = [
   'https://weather-appropriate-wardrobe.gaurav-desai.com',
+  'https://www.weather-appropriate-wardrobe.gaurav-desai.com',
   'https://gauravkdesai.github.io',
   'http://localhost:5173',  // Local development with Vite
   'http://localhost:3000',  // Local development alternatives
