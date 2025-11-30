@@ -1,0 +1,7 @@
+{
+  "name": "Family Weather Wardrobe",
+  "description": "Get personalized clothing suggestions for your family based on today's weather or an upcoming trip. This app provides recommendations for your family, considers local styles, and can generate packing lists for travel.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

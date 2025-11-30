@@ -1,0 +1,29 @@
+/* Accessible focus styles: use a visible ring when keyboard navigating */
+:root {
+  --focus-ring: 3px;
+  --focus-color: rgba(79,70,229,0.85); /* indigo-600 */
+}
+
+/* Prefer :focus-visible so mouse clicks don't show outline */
+:where(:focus-visible) {
+  outline: none;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  box-shadow: 0 0 0 var(--focus-ring) var(--focus-color);
+  border-radius: 6px;
+}
+
+/* Ensure high-contrast for dark mode */
+@media (prefers-color-scheme: dark) {
+  :root { --focus-color: rgba(99,102,241,0.9); }
+}
+
+/* Small utility: strongly visible focus for the confirm buttons */
+.focus-strong:focus-visible {
+  box-shadow: 0 0 0 var(--focus-ring) rgba(220,38,38,0.95); /* red-600 */
+}
