@@ -6,8 +6,8 @@ substitutions:
   _AR_REPO: 'family-weather-wardrobe-repo'
   _FRONTEND_SERVICE: 'frontend-service'
   _BACKEND_SERVICE: 'backend-service'
-  _DEPLOYER_SA_EMAIL: 'cloud-run-deployer-sa@gen-lang-client-0325151027.iam.gserviceaccount.com'
-  _CLOUD_RUN_SA: 'wardrobe-backend-sa@gen-lang-client-0325151027.iam.gserviceaccount.com'
+  _DEPLOYER_SA_EMAIL: 'cloud-run-deployer-sa@$PROJECT_ID.iam.gserviceaccount.com'
+  _CLOUD_RUN_SA: 'wardrobe-backend-sa@$PROJECT_ID.iam.gserviceaccount.com'
 
 steps:
   # Build backend image (parallel step 1)
