@@ -2,80 +2,152 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Family Weather Wardrobe
 
-This contains everything you need to run your app locally.
+Get personalized clothing suggestions for your family based on today's weather or an upcoming trip, powered by Google Gemini AI.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1z8zDGrSTeikWyc3LKocjdWxHkPGAXL5U
+## Architecture
 
-## Run Locally
+- **Frontend**: Static React SPA hosted on Google Cloud Storage
+- **Backend**: Node.js/Express API on Cloud Run (us-central1)
+- **AI**: Vertex AI Gemini 2.0 Flash in us-central1
 
-**Prerequisites:**  Node.js
+## Local Development
 
+**Prerequisites:** Node.js 16+
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   cd backend && npm install && cd ..
+   ```
 
-## Local Docker development
+2. Run backend locally (optional, uses mock data by default):
+   ```bash
+   cd backend
+   GEMINI_API_KEY=your-api-key npm start
+   ```
 
-You can run both frontend (Vite dev server) and backend inside Docker using the provided compose file and consolidated helper scripts.
+3. Run frontend dev server:
+   ```bash
+   npm run dev
+   ```
+   The app opens at `http://localhost:5173` and uses mock data unless you configure `VITE_FUNCTION_URL`.
 
-- Start the dev stack (non-interactive):
+## Deploy to Google Cloud
 
-```bash
-chmod +x ./scripts/dev-start.sh
-./scripts/dev-start.sh
-```
+**Prerequisites:**
+- GCP project with billing enabled
+- `gcloud` CLI configured: `gcloud auth login && gcloud config set project YOUR_PROJECT_ID`
 
-- Stop the dev stack:
+### Manual CLI Deployment (Recommended)
 
-```bash
-./scripts/dev-stop.sh
-```
-
-Notes:
-- The compose file for dev is `docker-compose.dev.yml`.
-- Host ports: frontend Vite dev server -> `3000`, backend -> `8081`.
-- Environment variables for the frontend (create a `.env.local` in the repo root):
-
-```env
-# Use mocked Gemini responses (default true for local dev)
-VITE_USE_MOCK_GEMINI=true
-
-# If you want the frontend to call a running backend in Docker use the compose service URL
-# (frontend inside Docker resolves `backend:8080` to the backend container)
-# Example to point the frontend to the backend service in Docker:
-VITE_USE_MOCK_GEMINI=false
-VITE_FUNCTION_URL=http://backend:8080/suggestions
-
-# Timeout for backend fetches
-VITE_FUNCTION_FETCH_TIMEOUT_MS=8000
-```
-
-These scripts are non-interactive by default to make CI and automation easier.
-
-Important: to ensure deterministic, fast Docker builds we require `package-lock.json` files to be committed for both frontend and backend. The production Dockerfiles will fail if a lockfile is missing — this prevents `npm install` from running during image builds and helps avoid unexpected dependency drift.
-
-### Production (nginx) compose
-
-You can run a production-style stack (static frontend served by nginx + backend) locally with `docker-compose.prod.yml`. This composes the built frontend image and the backend. The frontend image writes an `env.js` at container start from the `FUNCTION_URL` environment variable so you don't need to rebuild the image to point to a different backend.
-
-Example:
+Run the deployment script locally to deploy backend (Cloud Run) and frontend (GCS):
 
 ```bash
-# Build and start prod-style stack (serve static site with nginx)
-docker compose -f docker-compose.prod.yml up --build -d
-
-# Frontend (nginx) -> http://localhost:8080
-# Backend -> http://localhost:8081
+bash scripts/deploy-static.sh
 ```
 
-To control the runtime backend URL exposed to the static frontend, set env when running compose. Example:
+This script:
+1. Enables required APIs (Cloud Run, IAM, Vertex AI, Storage)
+2. Deploys backend to Cloud Run (source build from `./backend`)
+3. Builds frontend bundle with hashed assets
+4. Creates/configures GCS bucket for static hosting
+5. Uploads frontend with proper cache headers
+6. Injects backend URL into `env.js` at deploy time
+
+**Outputs:**
+- Backend URL: `https://backend-service-<hash>.us-central1.run.app`
+- Frontend URL: `https://storage.googleapis.com/fw-wardrobe-frontend-<project-id>/index.html`
+
+### Initial Setup (One-Time)
+
+If deploying for the first time, run the bootstrap script to create the service account:
 
 ```bash
-FUNCTION_URL=http://localhost:8081 docker compose -f docker-compose.prod.yml up --build -d
+bash scripts/bootstrap-gcp.sh
 ```
 
+This creates `wardrobe-backend-sa@<project>.iam.gserviceaccount.com` with minimal Vertex AI permissions.
+
+## Continuous Integration (GitHub Actions)
+
+GitHub Actions is configured for **tests only** (no auto-deploy). The single workflow file `.github/workflows/ci.yml`:
+
+- Installs dependencies (root + backend)
+- Runs tests (`npm test`) if present
+- Runs lint (`npm run lint`) if present
+
+There is intentionally **no deploy workflow** to avoid noisy failures. All deployment is done via the CLI using `scripts/deploy-static.sh`.
+
+If you later want to add deploy automation, create a new workflow that:
+1. Authenticates with Workload Identity Federation
+2. Runs `bash scripts/deploy-static.sh`
+3. Is gated behind a secret like `DEPLOY_ENABLED=true`
+
+Until then, deployment remains manual, secure, and fully under your control.
+
+## Project Structure
+
+```
+├── App.tsx                 # Main React component
+├── components/             # React UI components
+├── services/               # API client (geminiService.ts)
+├── backend/                # Express backend
+│   ├── server.js          # API endpoints (/healthz, /suggestions)
+│   ├── geminiClient.js    # Vertex AI integration
+│   └── Dockerfile         # Backend container config
+├── build.mjs              # Frontend build script (hashing, SRI)
+├── scripts/
+│   ├── deploy-static.sh   # One-click deployment
+│   └── bootstrap-gcp.sh   # Initial GCP setup
+└── dist/                  # Built frontend assets (generated)
+```
+
+## Configuration
+
+### Backend Environment Variables
+- `GEMINI_API_KEY`: Vertex AI uses Application Default Credentials (not needed in Cloud Run)
+- `PORT`: Server port (default 8080)
+- `LOG_LEVEL`: Winston log level (default `info`)
+
+### Frontend Environment
+- Runtime config injected via `env.js` at deploy time
+- `FUNCTION_URL`: Backend API URL (set automatically by deploy script)
+
+## Security Features
+
+- Hashed bundle names with SRI (Subresource Integrity)
+- Immutable caching for JS bundles (1 year)
+- No-store caching for `env.js`
+- No-cache for `index.html`
+- Rate limiting on backend (100 req/15min per IP)
+- Minimal IAM permissions (service account with only `aiplatform.user`)
+
+## Troubleshooting
+
+**Frontend shows mock SF weather:**
+- Hard refresh the browser (Cmd+Shift+R)
+- Check console for `FUNCTION_URL` value
+- Verify `env.js` exists: `curl https://storage.googleapis.com/.../env.js`
+
+**Backend timeout:**
+- Cold starts can take 10-15s
+- Frontend has 30s timeout with automatic retry
+- Check backend logs: `gcloud run logs read backend-service --region=us-central1`
+
+**Deployment fails:**
+- Ensure APIs are enabled: `gcloud services list --enabled`
+- Verify service account exists: `gcloud iam service-accounts list`
+- Check IAM roles: `gcloud projects get-iam-policy PROJECT_ID`
+
+## Cost Optimization
+
+- Cloud Run: Pay per request (free tier: 2M requests/month)
+- GCS: Storage + bandwidth (free tier: 5GB storage, 1GB egress/month)
+- Vertex AI: Pay per token (Gemini 2.0 Flash is cost-effective)
+- Estimated cost for personal use: <$5/month
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
