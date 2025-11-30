@@ -30,7 +30,7 @@ steps:
     args:
       - '-c'
       - |
-        BACKEND_URL="https://${_BACKEND_SERVICE}-$$(gcloud config get-value project | tr ':' '-' | cut -d'-' -f2).${_REGION}.run.app"
+        BACKEND_URL="https://${_BACKEND_SERVICE}-240111074752.${_REGION}.run.app"
         gcloud run deploy ${_FRONTEND_SERVICE} \
           --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA} \
           --region ${_REGION} \
