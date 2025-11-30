@@ -22,6 +22,25 @@ function getEnv(): Record<string, any> {
     return merged;
 }
 
+// Fallback: if window.__ENV is missing or empty, try fetching /env.js dynamically.
+async function ensureEnvLoaded(): Promise<void> {
+    if (typeof window === 'undefined') return; // Node/SSR context
+    if ((window as any).__ENV && (window as any).__ENV.FUNCTION_URL) return; // Already loaded
+    try {
+        console.log('[GeminiService] window.__ENV missing or incomplete, fetching /env.js...');
+        const script = document.createElement('script');
+        script.src = '/env.js?t=' + Date.now();
+        await new Promise((resolve, reject) => {
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+        console.log('[GeminiService] /env.js loaded dynamically, window.__ENV=', (window as any).__ENV);
+    } catch (err) {
+        console.warn('[GeminiService] Failed to dynamically load /env.js:', err);
+    }
+}
+
 // NOTE: Do NOT snapshot ENV at module load (SSR might run before env.js loads).
 // Compute effective env values per request so window.__ENV can be picked up.
 function resolveRuntimeConfig() {
@@ -34,6 +53,7 @@ function resolveRuntimeConfig() {
 
 
 const callApi = async (body: object): Promise<GeminiResponse> => {
+    await ensureEnvLoaded(); // Attempt dynamic load if env missing
     const { ENV, FUNCTION_URL, USE_MOCK_GEMINI, FETCH_TIMEOUT_MS } = resolveRuntimeConfig();
     console.log('[GeminiService] FUNCTION_URL=', FUNCTION_URL || '(empty)', 'USE_MOCK_GEMINI=', USE_MOCK_GEMINI, 'ENV keys=', Object.keys(ENV));
     if (USE_MOCK_GEMINI || !FUNCTION_URL) {

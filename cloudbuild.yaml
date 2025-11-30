@@ -10,22 +10,47 @@ substitutions:
   _CLOUD_RUN_SA: 'wardrobe-backend-sa@${PROJECT_ID}.iam.gserviceaccount.com'
 
 steps:
-  # Build backend image and push to Artifact Registry
+  # Build backend image (parallel step 1)
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
     args: ['build', '-f', 'backend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}', '.']
 
+  # Build frontend image (parallel step 2)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}']
-
-  # Build frontend image and push to Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
     args: ['build', '-f', 'frontend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA}', '.']
 
+  # Push backend image (wait for backend build)
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    waitFor: ['build-backend']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}']
+
+  # Push frontend image (wait for frontend build)
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    waitFor: ['build-frontend']
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA}']
 
-  # Deploy frontend to Cloud Run (public)
+  # Deploy backend to Cloud Run (parallel with frontend deploy)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    waitFor: ['push-backend']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy ${_BACKEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
+          --region ${_REGION} \
+          --platform managed \
+          --service-account ${_CLOUD_RUN_SA} \
+          --allow-unauthenticated
+
+  # Deploy frontend to Cloud Run (parallel with backend deploy)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend']
     entrypoint: 'bash'
     args:
       - '-c'
@@ -37,19 +62,6 @@ steps:
           --platform managed \
           --allow-unauthenticated \
           --set-env-vars="FUNCTION_URL=$${BACKEND_URL}"
-
-  # Deploy backend to Cloud Run (public) with Vertex AI service account
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gcloud run deploy ${_BACKEND_SERVICE} \
-          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
-          --region ${_REGION} \
-          --platform managed \
-          --service-account ${_CLOUD_RUN_SA} \
-          --allow-unauthenticated
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}'
