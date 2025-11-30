@@ -1,11 +1,13 @@
 import * as esbuild from 'esbuild';
 import { cp, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 // These are served by CDN via importmap, so we don't need to bundle them.
 const externalDependencies = [];
 
 try {
     // Bundle the JavaScript/TypeScript code
+        const buildVersion = Date.now().toString();
         await esbuild.build({
             entryPoints: ['index.tsx'],
             bundle: true,
@@ -16,14 +18,23 @@ try {
             external: externalDependencies,
             define: {
                 'process.env.NODE_ENV': '"production"',
+                'process.env.BUILD_VERSION': JSON.stringify(buildVersion),
                 'process.env': '{}',
                 'process': '{}'
             },
-            // esbuild needs to know how to handle JSX syntax in .tsx files
-            loader: {
-                    '.tsx': 'tsx'
-            }
+            loader: { '.tsx': 'tsx' }
         });
+
+        // Hash the bundle for immutable caching & integrity.
+        const bundlePath = 'dist/bundle.js';
+        const bundleContent = await readFile(bundlePath);
+        const shortHash = createHash('sha256').update(bundleContent).digest('hex').slice(0, 16);
+        const sriHash = createHash('sha384').update(bundleContent).digest('base64');
+        const hashedName = `bundle.${shortHash}.js`;
+        await writeFile(`dist/${hashedName}`, bundleContent);
+        // Remove original (avoid serving un-hashed asset accidentally)
+        // Using fs promises unlink would require import; simpler: keep original if delete fails gracefully.
+        try { await (await import('node:fs/promises')).unlink(bundlePath); } catch {}
 
         // Copy static files to the output directory
         await cp('index.html', 'dist/index.html');
@@ -42,7 +53,11 @@ try {
         const htmlPath = 'dist/index.html';
         let html = await readFile(htmlPath, { encoding: 'utf8' });
         // Replace a script tag that imports /index.tsx (dev-only) with the bundled script for production.
-        html = html.replace(/<script[^>]+src=["']\/index\.tsx["'][^>]*>\s*<\/script>\s*/i, '<script type="module" src="/bundle.js"></script>');
+        // Inject cache-busting query param and a global version console log so we can verify deployment.
+        html = html.replace(/<script[^>]+src=["']\/index\.tsx["'][^>]*>\s*<\/script>\s*/i,
+            `<script>console.log('[FWardrobe] build version: ${buildVersion}, hash: ${shortHash}');</script>\n` +
+            `<script type="module" src="/${hashedName}" integrity="sha384-${sriHash}" crossorigin="anonymous"></script>`);
+        await writeFile('dist/build-meta.json', JSON.stringify({ buildVersion, shortHash, sriHash, hashedName, timestamp: new Date().toISOString() }, null, 2));
         await writeFile(htmlPath, html, { encoding: 'utf8' });
     await cp('metadata.json', 'dist/metadata.json');
 
