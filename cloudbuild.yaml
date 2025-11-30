@@ -7,6 +7,7 @@ substitutions:
   _FRONTEND_SERVICE: 'family-weather-wardrobe-frontend'
   _BACKEND_SERVICE: 'family-weather-wardrobe-backend'
   _DEPLOYER_SA_EMAIL: 'cloud-run-deployer-sa@${PROJECT_ID}.iam.gserviceaccount.com'
+  _CLOUD_RUN_SA: 'wardrobe-backend-sa@${PROJECT_ID}.iam.gserviceaccount.com'
 
 steps:
   # Build backend image and push to Artifact Registry
@@ -29,36 +30,26 @@ steps:
     args:
       - '-c'
       - |
+        BACKEND_URL="https://${_BACKEND_SERVICE}-$$(gcloud config get-value project | tr ':' '-' | cut -d'-' -f2).${_REGION}.run.app"
         gcloud run deploy ${_FRONTEND_SERVICE} \
           --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA} \
           --region ${_REGION} \
           --platform managed \
-          --service-account ${_DEPLOYER_SA_EMAIL} \
-          --allow-unauthenticated
+          --allow-unauthenticated \
+          --set-env-vars="FUNCTION_URL=$${BACKEND_URL}"
 
-  # Deploy backend to Cloud Run (public) and optionally inject secrets
+  # Deploy backend to Cloud Run (public) with Vertex AI service account
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # If you use Secret Manager to inject GEMINI_API_KEY, add the --set-secrets flag via substitution
-        if [ -n "${_GEMINI_SECRET}" ]; then
-          gcloud run deploy ${_BACKEND_SERVICE} \
-            --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
-            --region ${_REGION} \
-            --platform managed \
-            --service-account ${_DEPLOYER_SA_EMAIL} \
-            --allow-unauthenticated \
-            --set-secrets=GEMINI_API_KEY=projects/$PROJECT_ID/secrets/${_GEMINI_SECRET}:latest
-        else
-          gcloud run deploy ${_BACKEND_SERVICE} \
-            --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
-            --region ${_REGION} \
-            --platform managed \
-            --service-account ${_DEPLOYER_SA_EMAIL} \
-            --allow-unauthenticated
-        fi
+        gcloud run deploy ${_BACKEND_SERVICE} \
+          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
+          --region ${_REGION} \
+          --platform managed \
+          --service-account ${_CLOUD_RUN_SA} \
+          --allow-unauthenticated
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}'
