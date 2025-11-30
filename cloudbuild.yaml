@@ -7,30 +7,49 @@ substitutions:
   _FRONTEND_SERVICE: 'frontend-service'
   _BACKEND_SERVICE: 'backend-service'
   _PROJECT_ID: '$PROJECT_ID'
-  _BACKEND_SA: 'wardrobe-backend-sa@$PROJECT_ID.iam.gserviceaccount.com'
 
 steps:
+  # Preflight: verify required IAM bindings exist; fail fast if missing
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'precheck-iam'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Project: ${_PROJECT_ID} | Region: ${_REGION}"
+        echo "Checking required roles on deployer and runtime service accounts..."
+        # roles/run.admin
+        gcloud projects get-iam-policy "${_PROJECT_ID}" --flatten=bindings --filter="bindings.role=roles/run.admin AND bindings.members:serviceAccount:cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com" --format='value(bindings.role)' >/dev/null || { echo "Missing roles/run.admin for cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com"; exit 1; }
+        # roles/artifactregistry.writer
+        gcloud projects get-iam-policy "${_PROJECT_ID}" --flatten=bindings --filter="bindings.role=roles/artifactregistry.writer AND bindings.members:serviceAccount:cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com" --format='value(bindings.role)' >/dev/null || { echo "Missing roles/artifactregistry.writer for cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com"; exit 1; }
+        # roles/storage.objectViewer
+        gcloud projects get-iam-policy "${_PROJECT_ID}" --flatten=bindings --filter="bindings.role=roles/storage.objectViewer AND bindings.members:serviceAccount:cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com" --format='value(bindings.role)' >/dev/null || { echo "Missing roles/storage.objectViewer for cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com"; exit 1; }
+        echo "Checking Service Account User on runtime SA..."
+        gcloud iam service-accounts get-iam-policy "wardrobe-backend-sa@${_PROJECT_ID}.iam.gserviceaccount.com" --flatten=bindings --filter="bindings.role=roles/iam.serviceAccountUser AND bindings.members:serviceAccount:cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com" --format='value(bindings.role)' >/dev/null || { echo "Missing roles/iam.serviceAccountUser on wardrobe-backend-sa@${_PROJECT_ID}.iam.gserviceaccount.com for cloud-run-deployer-sa@${_PROJECT_ID}.iam.gserviceaccount.com"; exit 1; }
+        echo "IAM prechecks passed."
   # Build backend image (parallel step 1)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-backend'
-    args: ['build', '-f', 'backend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}', '.']
+    waitFor: ['precheck-iam']
+    args: ['build', '-f', 'backend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${_TAG}', '.']
 
   # Build frontend image (parallel step 2)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-frontend'
-    args: ['build', '-f', 'frontend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA}', '.']
+    waitFor: ['precheck-iam']
+    args: ['build', '-f', 'frontend/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${_TAG}', '.']
 
   # Push backend image (wait for backend build)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-backend'
     waitFor: ['build-backend']
-    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${_TAG}']
 
   # Push frontend image (wait for frontend build)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-frontend'
     waitFor: ['build-frontend']
-    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA}']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${_TAG}']
 
   # Deploy backend to Cloud Run (parallel with frontend deploy)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -41,7 +60,7 @@ steps:
       - 'run'
       - 'deploy'
       - '${_BACKEND_SERVICE}'
-      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/backend:${SHORT_SHA}'
+      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/backend:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--service-account=${_BACKEND_SA}'
@@ -56,15 +75,15 @@ steps:
       - 'run'
       - 'deploy'
       - '${_FRONTEND_SERVICE}'
-      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/frontend:${SHORT_SHA}'
+      - '--image=${_REGION}-docker.pkg.dev/${_PROJECT_ID}/${_AR_REPO}/frontend:${_TAG}'
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--set-env-vars=FUNCTION_URL=https://${_BACKEND_SERVICE}-240111074752.${_REGION}.run.app'
 
 images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA}'
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${_TAG}'
 
 timeout: '1200s'
 

@@ -56,7 +56,17 @@ try {
         // Inject cache-busting query param and a global version console log so we can verify deployment.
         html = html.replace(/<script[^>]+src=["']\/index\.tsx["'][^>]*>\s*<\/script>\s*/i,
             `<script>console.log('[FWardrobe] build version: ${buildVersion}, hash: ${shortHash}');</script>\n` +
-            `<script type="module" src="/${hashedName}" integrity="sha384-${sriHash}" crossorigin="anonymous"></script>`);
+            `<script type="module" src="${hashedName}" integrity="sha384-${sriHash}" crossorigin="anonymous"></script>`);
+
+        // Convert absolute asset paths to relative for GCS static hosting
+        // Ensure env.js, CSS, manifest, icons use relative paths.
+        html = html.replace(/src=["']\/env\.js["']/g, "src=\"env.js\"");
+        html = html.replace(/href=["']\/index\.css["']/g, "href=\"index.css\"");
+        html = html.replace(/href=["']\/manifest\.json["']/g, "href=\"manifest.json\"");
+        html = html.replace(/href=["']\/icons\//g, "href=\"icons/");
+        // Also adjust any other leading-slash asset references to be safe
+        html = html.replace(/src=["']\/(?!https?:)/g, "src=\"");
+        html = html.replace(/href=["']\/(?!https?:)/g, "href=\"");
         await writeFile('dist/build-meta.json', JSON.stringify({ buildVersion, shortHash, sriHash, hashedName, timestamp: new Date().toISOString() }, null, 2));
         await writeFile(htmlPath, html, { encoding: 'utf8' });
     await cp('metadata.json', 'dist/metadata.json');

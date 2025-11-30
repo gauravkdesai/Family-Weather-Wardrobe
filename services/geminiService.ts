@@ -22,22 +22,22 @@ function getEnv(): Record<string, any> {
     return merged;
 }
 
-// Fallback: if window.__ENV is missing or empty, try fetching /env.js dynamically.
+// Fallback: if window.__ENV is missing or empty, try fetching env.js dynamically.
 async function ensureEnvLoaded(): Promise<void> {
     if (typeof window === 'undefined') return; // Node/SSR context
     if ((window as any).__ENV && (window as any).__ENV.FUNCTION_URL) return; // Already loaded
     try {
-        console.log('[GeminiService] window.__ENV missing or incomplete, fetching /env.js...');
+        console.log('[GeminiService] window.__ENV missing or incomplete, fetching env.js...');
         const script = document.createElement('script');
-        script.src = '/env.js?t=' + Date.now();
+        script.src = 'env.js?t=' + Date.now();
         await new Promise((resolve, reject) => {
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
         });
-        console.log('[GeminiService] /env.js loaded dynamically, window.__ENV=', (window as any).__ENV);
+        console.log('[GeminiService] env.js loaded dynamically, window.__ENV=', (window as any).__ENV);
     } catch (err) {
-        console.warn('[GeminiService] Failed to dynamically load /env.js:', err);
+        console.warn('[GeminiService] Failed to dynamically load env.js:', err);
     }
 }
 
@@ -47,7 +47,7 @@ function resolveRuntimeConfig() {
     const ENV = getEnv();
     const FUNCTION_URL = (ENV.VITE_FUNCTION_URL ?? ENV.FUNCTION_URL ?? '') as string;
     const USE_MOCK_GEMINI = (ENV.VITE_USE_MOCK_GEMINI ?? ENV.USE_MOCK_GEMINI ?? '') === 'true';
-    const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
+    const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTION_FETCH_TIMEOUT_MS) || 30000;
     return { ENV, FUNCTION_URL, USE_MOCK_GEMINI, FETCH_TIMEOUT_MS };
 }
 
@@ -65,14 +65,40 @@ const callApi = async (body: object): Promise<GeminiResponse> => {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(FUNCTION_URL, {
+    const endpoint = `${FUNCTION_URL.replace(/\/$/, '')}/suggestions`;
+    console.log('[GeminiService] POST', endpoint, 'timeout', FETCH_TIMEOUT_MS, 'ms');
+
+    const doFetch = () => fetch(endpoint, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
     });
+
+    let response: Response;
+    try {
+        response = await doFetch();
+    } catch (err: any) {
+        if (err && err.name === 'AbortError') {
+            console.warn('[GeminiService] Request aborted (timeout). Retrying once with extended timeout...');
+            // Retry once with extended timeout
+            clearTimeout(id);
+            const controller2 = new AbortController();
+            const id2 = setTimeout(() => controller2.abort(), Math.max(FETCH_TIMEOUT_MS, 45000));
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                    signal: controller2.signal,
+                });
+            } finally {
+                clearTimeout(id2);
+            }
+        } else {
+            throw err;
+        }
+    }
 
     clearTimeout(id);
 
