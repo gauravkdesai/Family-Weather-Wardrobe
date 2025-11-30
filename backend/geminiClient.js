@@ -13,8 +13,45 @@ function buildResponseSchema() {
   return {
     type: 'OBJECT',
     properties: {
-      weather: { type: 'OBJECT' },
-      suggestions: { type: 'ARRAY' }
+      weather: {
+        type: 'OBJECT',
+        properties: {
+          location: { type: 'STRING' },
+          highTemp: { type: 'NUMBER' },
+          lowTemp: { type: 'NUMBER' },
+          dateRange: { type: 'STRING' },
+          dayParts: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                period: { type: 'STRING' },
+                temp: { type: 'NUMBER' },
+                condition: { type: 'STRING' },
+                conditionIcon: { type: 'STRING' },
+                time: { type: 'STRING' }
+              },
+              required: ['period', 'temp', 'condition', 'conditionIcon', 'time']
+            }
+          }
+        },
+        required: ['location', 'highTemp', 'lowTemp', 'dateRange', 'dayParts']
+      },
+      suggestions: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            member: { type: 'STRING' },
+            outfit: {
+              type: 'ARRAY',
+              items: { type: 'STRING' }
+            },
+            notes: { type: 'STRING' }
+          },
+          required: ['member', 'outfit', 'notes']
+        }
+      }
     },
     required: ['weather', 'suggestions']
   };
@@ -51,7 +88,25 @@ const createClient = () => {
   // Use Vertex AI with ADC (service account / Workload Identity) when deployed on GCP.
   try {
     const vertexAI = new VertexAI({ project: PROJECT_ID, location: LOCATION });
-    return vertexAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const requestedModel = process.env.VERTEX_AI_MODEL;
+    const candidateModels = [
+      requestedModel,
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-exp',
+      'gemini-2.0-flash-exp',
+      'gemini-2.0-flash'
+    ].filter(Boolean);
+    let lastErr;
+    for (const m of candidateModels) {
+      try {
+        console.log('Attempting to initialize model:', m);
+        return vertexAI.getGenerativeModel({ model: m });
+      } catch (e) {
+        console.warn('Model init failed for', m, e && e.message ? e.message : e);
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('No model initialized');
   } catch (e) {
     console.warn('VertexAI client construction failed, falling back to mock client:', e && e.message ? e.message : e);
     // Provide a lightweight mock client so the server can continue running in dev.
@@ -155,7 +210,11 @@ const createDailyPrompt = (family, day, rawschedule, locationInfo) => {
     locationPromptPart = `for the location "${locationInfo.location}"`;
   }
 
-  return `Using the best available real-time weather data via Google Search for the entire day ${dayPromptPart} ${locationPromptPart}, provide a detailed weather summary and clothing suggestions for a family consisting of: ${family.join(', ')}.${schedulePromptPart}\nThe response MUST be a single, valid JSON object and nothing else. Do not include markdown formatting or any other text outside the JSON.`;
+  return `Using the best available real-time weather data for the entire day ${dayPromptPart} ${locationPromptPart}, provide a detailed weather summary and clothing suggestions for a family consisting of: ${family.join(', ')}.${schedulePromptPart}
+
+The weather object MUST include: location (city/region name), highTemp, lowTemp, dateRange, and dayParts array with at least 4 periods (Morning, Afternoon, Evening, Night). Each dayPart must have: period, temp, condition, conditionIcon (SUNNY/CLOUDY/RAINY/PARTLY_CLOUDY/STORMY), and time (HH:MM format).
+
+The suggestions array must have one entry per family member with: member name, outfit array (list of clothing items), and notes (practical advice).`;
 };
 
 const createTravelPrompt = (destinationAndDuration, family) => {

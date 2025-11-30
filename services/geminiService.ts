@@ -22,19 +22,23 @@ function getEnv(): Record<string, any> {
     return merged;
 }
 
-const ENV = getEnv();
-// Support Vite-style names (`VITE_FUNCTION_URL`) as well as plain `FUNCTION_URL`.
-const FUNCTION_URL = (ENV.VITE_FUNCTION_URL ?? ENV.FUNCTION_URL ?? '') as string;
-const USE_MOCK_GEMINI = (ENV.VITE_USE_MOCK_GEMINI ?? ENV.USE_MOCK_GEMINI ?? '') === 'true';
-const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
+// NOTE: Do NOT snapshot ENV at module load (SSR might run before env.js loads).
+// Compute effective env values per request so window.__ENV can be picked up.
+function resolveRuntimeConfig() {
+    const ENV = getEnv();
+    const FUNCTION_URL = (ENV.VITE_FUNCTION_URL ?? ENV.FUNCTION_URL ?? '') as string;
+    const USE_MOCK_GEMINI = (ENV.VITE_USE_MOCK_GEMINI ?? ENV.USE_MOCK_GEMINI ?? '') === 'true';
+    const FETCH_TIMEOUT_MS = Number(ENV.VITE_FUNCTION_FETCH_TIMEOUT_MS ?? ENV.FUNCTION_FETCH_TIMEOUT_MS) || 8000;
+    return { ENV, FUNCTION_URL, USE_MOCK_GEMINI, FETCH_TIMEOUT_MS };
+}
 
 
 const callApi = async (body: object): Promise<GeminiResponse> => {
-    console.log('callApi - FUNCTION_URL:', FUNCTION_URL, 'USE_MOCK_GEMINI:', USE_MOCK_GEMINI);
-    console.log('callApi - ENV object keys:', Object.keys(ENV));
+    const { ENV, FUNCTION_URL, USE_MOCK_GEMINI, FETCH_TIMEOUT_MS } = resolveRuntimeConfig();
+    console.log('[GeminiService] FUNCTION_URL=', FUNCTION_URL || '(empty)', 'USE_MOCK_GEMINI=', USE_MOCK_GEMINI, 'ENV keys=', Object.keys(ENV));
     if (USE_MOCK_GEMINI || !FUNCTION_URL) {
-        console.warn("Using mock data for Gemini (USE_MOCK_GEMINI=true or FUNCTION_URL not set).");
-        return new Promise((resolve) => setTimeout(() => resolve(mockGeminiResponse), 300));
+        console.warn('[GeminiService] Using mock data (USE_MOCK_GEMINI=true or FUNCTION_URL missing).');
+        return new Promise((resolve) => setTimeout(() => resolve(mockGeminiResponse), 200));
     }
 
     // Use a timeout wrapper for fetch
@@ -53,7 +57,11 @@ const callApi = async (body: object): Promise<GeminiResponse> => {
     clearTimeout(id);
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'An unknown server error occurred.' }));
+        const text = await response.text().catch(() => '');
+        console.error('[GeminiService] Backend error status=', response.status, 'body=', text.substring(0, 180));
+        // Try parse JSON if possible
+        let errorData: any = { error: 'An unknown server error occurred.' };
+        try { errorData = JSON.parse(text); } catch(_) {}
         throw new Error(errorData.error || `Request failed with status ${response.status}`);
     }
 
