@@ -41,10 +41,10 @@ steps:
       - '-c'
       - |
         gcloud run deploy ${_BACKEND_SERVICE} \
-          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
+          --image ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_AR_REPO}/backend:${SHORT_SHA} \
           --region ${_REGION} \
           --platform managed \
-          --service-account ${_CLOUD_RUN_SA} \
+          --service-account wardrobe-backend-sa@$$PROJECT_ID.iam.gserviceaccount.com \
           --allow-unauthenticated
 
   # Deploy frontend to Cloud Run (parallel with backend deploy)
@@ -57,7 +57,7 @@ steps:
       - |
         BACKEND_URL="https://${_BACKEND_SERVICE}-240111074752.${_REGION}.run.app"
         gcloud run deploy ${_FRONTEND_SERVICE} \
-          --image ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA} \
+          --image ${_REGION}-docker.pkg.dev/$$PROJECT_ID/${_AR_REPO}/frontend:${SHORT_SHA} \
           --region ${_REGION} \
           --platform managed \
           --allow-unauthenticated \
