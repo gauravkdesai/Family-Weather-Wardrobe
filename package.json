@@ -31,7 +31,7 @@
     "@vitejs/plugin-react": "^4.0.0",
     "cors": "^2.8.5",
     "cross-fetch": "^3.1.5",
-    "esbuild": "^0.23.0",
+    "esbuild": "^0.27.0",
     "eslint": "^8.56.0",
     "eslint-plugin-jsx-a11y": "^6.8.0",
     "gh-pages": "^6.3.0",
