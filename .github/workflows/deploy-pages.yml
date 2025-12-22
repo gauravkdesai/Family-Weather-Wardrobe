@@ -15,12 +15,13 @@ on:
       - 'public/**'
       - 'package.json'
 
+permissions:
+  contents: write  # allow GITHUB_TOKEN to push to gh-pages
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # needed to push to gh-pages
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +41,6 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
-          github_token: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           cname: weather-appropriate-wardrobe.gaurav-desai.com
