@@ -1,5 +1,5 @@
 # Backend Dockerfile
-FROM node:20-slim AS build
+FROM node:25-slim AS build
 WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
 # Require lockfile for production builds to keep installs deterministic and fast.
@@ -11,7 +11,7 @@ RUN if [ -f package-lock.json ]; then \
 		fi
 COPY . .
 
-FROM node:20-slim AS runtime
+FROM node:25-slim AS runtime
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 COPY --from=build /usr/src/app /usr/src/app
