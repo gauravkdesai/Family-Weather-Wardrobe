@@ -131,9 +131,12 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ weather, tempUnit }) =>
             <p className="text-slate-600 dark:text-slate-300 pl-7" aria-describedby="weather-location">{condition}</p>
           </div>
         </div>
-        <div className="text-center sm:text-right flex-shrink-0">
-          <p className="text-5xl font-bold text-slate-800 dark:text-slate-100" aria-label={`High temperature: ${displayHigh} degrees ${tempUnit}`}>{displayHigh}°{tempUnit}</p>
-          <p className="text-slate-500 dark:text-slate-400" aria-label={`Low temperature: ${displayLow} degrees ${tempUnit}`}>High / {displayLow}°{tempUnit} Low</p>
+        <div className="text-center sm:text-right flex-shrink-0 text-slate-800 dark:text-slate-100">
+          <div className="flex items-baseline justify-center sm:justify-end gap-2">
+            <p className="text-3xl font-semibold" aria-label={`High temperature: ${displayHigh} degrees ${tempUnit}`}>High {displayHigh}°{tempUnit}</p>
+            <span className="text-3xl font-semibold">/</span>
+            <p className="text-3xl font-semibold" aria-label={`Low temperature: ${displayLow} degrees ${tempUnit}`}>Low {displayLow}°{tempUnit}</p>
+          </div>
         </div>
       </div>
       <WeatherTimeline dayParts={weather.dayParts} tempUnit={tempUnit} />
