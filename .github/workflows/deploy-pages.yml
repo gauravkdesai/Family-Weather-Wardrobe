@@ -21,6 +21,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # ensure token can push to gh-pages
 
     steps:
       - name: Checkout
