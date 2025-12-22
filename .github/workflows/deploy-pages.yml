@@ -18,6 +18,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to push to gh-pages
     
     steps:
       - name: Checkout
