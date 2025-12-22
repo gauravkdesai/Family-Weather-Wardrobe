@@ -38,6 +38,19 @@ export const PartlyCloudyIcon: React.FC<{className?: string}> = ({ className }) 
     </svg>
 );
 
+export const PartlyCloudyNightIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg viewBox="0 0 64 64" className={className || "w-12 h-12"}>
+        <defs>
+            <linearGradient id="pc_night_moon_grad" x1="24" x2="40" y1="16" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#cbd5e1"/><stop offset="1" stopColor="#94a3b8"/></linearGradient>
+            <linearGradient id="pc_night_cloud_grad" x1="22" x2="44" y1="32" y2="48" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#e5e7eb"/><stop offset="1" stopColor="#cbd5e1"/></linearGradient>
+        </defs>
+        <g>
+            <path d="M36 14a12 12 0 0 0-9.5 18.9 10 10 0 0 1 11.6-7.9A12 12 0 0 0 36 14Z" fill="url(#pc_night_moon_grad)" />
+        </g>
+        <path d="M49.4 38.4a12 12 0 1 0-22.8 4.4H48A10 10 0 0 0 49.4 38.4Z" fill="url(#pc_night_cloud_grad)" stroke="#94a3b8" strokeMiterlimit="10" strokeWidth="2"/>
+    </svg>
+);
+
 
 export const RainIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg viewBox="0 0 64 64" className={className || "w-12 h-12"}>

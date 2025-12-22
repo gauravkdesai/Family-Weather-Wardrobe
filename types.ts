@@ -4,6 +4,7 @@ export interface DayPartForecast {
   condition: string;
   conditionIcon: string;
   time: string; // e.g., "07:00"
+  isNight?: boolean;
 }
 
 export interface WeatherData {

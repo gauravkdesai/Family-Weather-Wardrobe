@@ -12,6 +12,7 @@ export const mockGeminiResponse: GeminiResponse = {
         condition: "Cool and foggy",
         conditionIcon: "CLOUDY",
         time: "07:00",
+        isNight: false,
       },
       {
         period: "Afternoon",
@@ -19,6 +20,7 @@ export const mockGeminiResponse: GeminiResponse = {
         condition: "Partly sunny",
         conditionIcon: "PARTLY_CLOUDY",
         time: "12:00",
+        isNight: false,
       },
       {
         period: "Evening",
@@ -26,6 +28,7 @@ export const mockGeminiResponse: GeminiResponse = {
         condition: "Clear and cool",
         conditionIcon: "SUNNY",
         time: "17:00",
+        isNight: false,
       },
       {
         period: "Night",
@@ -33,6 +36,7 @@ export const mockGeminiResponse: GeminiResponse = {
         condition: "Clear skies",
         conditionIcon: "SUNNY",
         time: "22:00",
+        isNight: true,
       },
     ],
     dateRange: "October 26, 2024",

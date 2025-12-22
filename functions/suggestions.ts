@@ -50,6 +50,15 @@ const suggestionSchema = {
   }
 };
 
+const sunriseSunsetSchema = {
+    type: Type.OBJECT,
+    properties: {
+        sunrise: { type: Type.STRING, description: "Local sunrise time in HH:MM 24-hour format" },
+        sunset: { type: Type.STRING, description: "Local sunset time in HH:MM 24-hour format" },
+    },
+    required: ["sunrise", "sunset"],
+};
+
 const jitter = (base: number) => Math.floor(base * (0.5 + Math.random()));
 
 // Get weather data from Google Search
@@ -148,17 +157,80 @@ const getClothingSuggestions = async (prompt: string): Promise<any[]> => {
 };
 
 // Map condition text to icon keyword
-const mapConditionToIcon = (condition: string): string => {
+const mapConditionToIcon = (condition: string, isNight?: boolean): string => {
     const c = condition.toLowerCase();
     if (c.includes('rain') || c.includes('shower') || c.includes('drizzle')) return 'RAIN';
     if (c.includes('snow') || c.includes('sleet') || c.includes('ice')) return 'SNOW';
     if (c.includes('wind')) return 'WINDY';
     if (c.includes('cloud') || c.includes('overcast')) {
-        if (c.includes('partly') || c.includes('scattered')) return 'PARTLY_CLOUDY';
+        if (c.includes('partly') || c.includes('scattered')) return isNight ? 'PARTLY_CLOUDY_NIGHT' : 'PARTLY_CLOUDY';
         return 'CLOUDY';
     }
-    if (c.includes('sun') || c.includes('clear') || c.includes('fair')) return 'SUNNY';
-    return 'PARTLY_CLOUDY'; // default
+    if (c.includes('sun') || c.includes('clear') || c.includes('fair')) return isNight ? 'CLEAR_NIGHT' : 'SUNNY';
+    return isNight ? 'PARTLY_CLOUDY_NIGHT' : 'PARTLY_CLOUDY'; // default
+};
+
+const parseTimeToMinutes = (time: string): number | null => {
+    if (!time) return null;
+    const match = time.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+};
+
+const getSunriseSunset = async (location: string): Promise<{ sunrise: number, sunset: number }> => {
+    let lastErr: Error | null = null;
+    let rawText = '';
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const config: GenerateContentParameters['config'] = {
+                responseMimeType: 'application/json',
+                responseSchema: sunriseSunsetSchema,
+                tools: [{ googleSearch: {} }],
+            };
+
+            const response = await ai.models.generateContent({
+                model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+                contents: `Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.` ,
+                config,
+            });
+
+            rawText = (response && response.text) ? response.text.trim() : '';
+            let payload = rawText;
+            if (payload.startsWith('```json')) {
+                payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+            } else {
+                const b = payload.indexOf('{');
+                const e = payload.lastIndexOf('}');
+                if (b >= 0 && e > b) payload = payload.substring(b, e + 1);
+            }
+
+            const parsed = JSON.parse(payload);
+            const sunriseMinutes = parseTimeToMinutes(parsed.sunrise);
+            const sunsetMinutes = parseTimeToMinutes(parsed.sunset);
+            if (sunriseMinutes === null || sunsetMinutes === null) {
+                throw new Error('Invalid sunrise/sunset format');
+            }
+            return { sunrise: sunriseMinutes, sunset: sunsetMinutes };
+        } catch (err) {
+            lastErr = err instanceof Error ? err : new Error(String(err));
+            log.error('getSunriseSunset attempt failed', { attempt, error: lastErr.message });
+            if (attempt === MAX_RETRIES) {
+                log.error('getSunriseSunset final failure', { rawText });
+                break;
+            }
+            const waitMs = jitter(400 * Math.pow(2, attempt));
+            await new Promise(r => setTimeout(r, waitMs));
+        }
+    }
+
+    // Fallback: approximate times if API call fails
+    const fallback = { sunrise: 6 * 60 + 30, sunset: 18 * 60 + 30 };
+    log.info('Using fallback sunrise/sunset', fallback);
+    return fallback;
 };
 
 export const createWeatherPrompt = (day: 'today' | 'tomorrow', locationInfo?: { lat: number, lon: number } | { location: string }): string => {
@@ -303,6 +375,9 @@ export const suggestions: HttpFunction = async (req, res) => {
         // Step 1: Get weather data from Google Search
         log.info('Fetching weather data with Google Search');
         const weatherData = await getWeatherData(weatherPrompt);
+
+        // Step 1b: Fetch sunrise/sunset for night-aware icons
+        const { sunrise, sunset } = await getSunriseSunset(weatherData.location);
         
         // Step 2: Get clothing suggestions from Gemini
         log.info('Generating clothing suggestions');
@@ -314,36 +389,46 @@ export const suggestions: HttpFunction = async (req, res) => {
         const suggestions = await getClothingSuggestions(clothingPrompt);
         
         // Step 3: Construct response with FIXED times
+        const isNightAtTime = (time: string) => {
+            const minutes = parseTimeToMinutes(time);
+            if (minutes === null) return false;
+            // Night if after sunset or before sunrise
+            return minutes >= sunset || minutes < sunrise;
+        };
+
         const dayParts = [
             {
                 period: 'Morning',
                 time: '07:00',
                 temp: weatherData.temp07,
                 condition: weatherData.condition07,
-                conditionIcon: mapConditionToIcon(weatherData.condition07)
+                isNight: isNightAtTime('07:00'),
             },
             {
                 period: 'Afternoon',
                 time: '12:00',
                 temp: weatherData.temp12,
                 condition: weatherData.condition12,
-                conditionIcon: mapConditionToIcon(weatherData.condition12)
+                isNight: isNightAtTime('12:00'),
             },
             {
                 period: 'Evening',
                 time: '17:00',
                 temp: weatherData.temp17,
                 condition: weatherData.condition17,
-                conditionIcon: mapConditionToIcon(weatherData.condition17)
+                isNight: isNightAtTime('17:00'),
             },
             {
                 period: 'Night',
                 time: '22:00',
                 temp: weatherData.temp22,
                 condition: weatherData.condition22,
-                conditionIcon: mapConditionToIcon(weatherData.condition22)
+                isNight: isNightAtTime('22:00'),
             }
-        ];
+        ].map(part => ({
+            ...part,
+            conditionIcon: mapConditionToIcon(part.condition, part.isNight),
+        }));
         
         const result: GeminiResponse = {
             weather: {

@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { WeatherData, DayPartForecast } from '../types';
-import { SunnyIcon, CloudyIcon, RainIcon, SnowIcon, WindyIcon, PartlyCloudyIcon, LocationMarkerIcon } from './icons';
+import { SunnyIcon, CloudyIcon, RainIcon, SnowIcon, WindyIcon, PartlyCloudyIcon, LocationMarkerIcon, PartlyCloudyNightIcon, MoonIcon } from './icons';
 
 interface WeatherDisplayProps {
   weather: WeatherData;
@@ -13,13 +13,23 @@ interface WeatherDisplayProps {
 const getWeatherIconComponent = (iconName: string) => {
     switch (iconName?.toUpperCase()) {
         case 'SUNNY': return SunnyIcon;
+    case 'CLEAR_NIGHT': return MoonIcon;
         case 'CLOUDY': return CloudyIcon;
         case 'PARTLY_CLOUDY': return PartlyCloudyIcon;
+    case 'PARTLY_CLOUDY_NIGHT': return PartlyCloudyNightIcon;
         case 'RAIN': return RainIcon;
         case 'SNOW': return SnowIcon;
         case 'WINDY': return WindyIcon;
         default: return PartlyCloudyIcon;
     }
+};
+
+const nightAdjustIcon = (iconName: string, isNight?: boolean) => {
+  if (!isNight) return iconName;
+  const upper = iconName?.toUpperCase();
+  if (upper === 'SUNNY') return 'CLEAR_NIGHT';
+  if (upper === 'PARTLY_CLOUDY') return 'PARTLY_CLOUDY_NIGHT';
+  return iconName;
 };
 
 
@@ -57,7 +67,8 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
 
                 {points.map((p, i) => {
                     const temp = temperatures[i];
-                    const IconComponent = getWeatherIconComponent(dayParts[i].conditionIcon);
+                    const iconName = nightAdjustIcon(dayParts[i].conditionIcon, dayParts[i].isNight);
+                    const IconComponent = getWeatherIconComponent(iconName);
                     
                     return (
                         <g key={i}>
@@ -101,7 +112,7 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ weather, tempUnit }) =>
     weather.dayParts?.[0];
 
   const condition = representativeForecast?.condition ?? 'Weather data unavailable';
-  const conditionIcon = representativeForecast?.conditionIcon ?? 'PARTLY_CLOUDY';
+  const conditionIcon = nightAdjustIcon(representativeForecast?.conditionIcon ?? 'PARTLY_CLOUDY', representativeForecast?.isNight);
   
   const convertTemp = (celsius: number) => {
     if (tempUnit === 'F') {
