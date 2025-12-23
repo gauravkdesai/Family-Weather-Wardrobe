@@ -108,7 +108,7 @@ const getWeatherData = async (prompt: string): Promise<any> => {
             const model = ai.getGenerativeModel({ model: requireModel() });
             const response = await model.generateContent({
                 contents: asUserContent(prompt),
-                tools: [{ googleSearchRetrieval: {} }] as any,
+                tools: [{ googleSearch: {} }] as any,
                 generationConfig: {
                     responseMimeType: 'application/json',
                     responseSchema: weatherSchema as any,
@@ -222,7 +222,7 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
             const model = ai.getGenerativeModel({ model: requireModel() });
             const response = await model.generateContent({
                 contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.`),
-                tools: [{ googleSearchRetrieval: {} }] as any,
+                tools: [{ googleSearch: {} }] as any,
                 generationConfig: {
                     responseMimeType: 'application/json',
                     responseSchema: sunriseSunsetSchema as any,
