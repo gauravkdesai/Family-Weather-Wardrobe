@@ -7,7 +7,11 @@ import { mockGeminiResponse } from '../mockData';
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
 const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
 const MODEL_NAME = process.env.GEMINI_MODEL || '';
-const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+const PROJECT_ID = process.env.GCLOUD_PROJECT
+    || process.env.GCP_PROJECT
+    || process.env.GOOGLE_CLOUD_PROJECT
+    || process.env.PROJECT_ID
+    || process.env.PROJECT_NUMBER;
 const LOCATION = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || 'us-central1';
 const USE_MOCK_GEMINI = (process.env.USE_MOCK_GEMINI || '').toLowerCase() === 'true';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
@@ -15,7 +19,9 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .map(o => o.trim())
     .filter(Boolean);
 
-const ai = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+const vertexOptions: { project?: string, location: string } = { location: LOCATION };
+if (PROJECT_ID) vertexOptions.project = PROJECT_ID;
+const ai = new VertexAI(vertexOptions as any);
 
 const asUserContent = (text: string) => ([{ role: 'user', parts: [{ text }] }]);
 const extractText = (response: any): string => {
