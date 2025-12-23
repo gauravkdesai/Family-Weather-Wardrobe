@@ -82,17 +82,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          # If FUNCTION_ENV_VARS not provided via repo var/secret, derive from checked-in config file
+          USE_ENV_FILE=false
           if [[ -z "${FUNCTION_ENV_VARS:-}" ]] && [[ -f config/functions.prod.env ]]; then
-            FUNCTION_ENV_VARS=$(grep -v '^#' config/functions.prod.env | xargs | sed 's/ /,/g')
+            USE_ENV_FILE=true
           fi
 
-          gcloud functions deploy "$FUNCTION_NAME" \
-            --gen2 \
-            --runtime=nodejs20 \
-            --region="$GCP_REGION" \
-            --source=functions/dist \
-            --entry-point=suggestions \
-            --trigger-http \
-            --allow-unauthenticated \
-            ${FUNCTION_ENV_VARS:+--set-env-vars="$FUNCTION_ENV_VARS"}
+          DEPLOY_CMD=(
+            gcloud functions deploy "$FUNCTION_NAME"
+            --gen2
+            --runtime=nodejs20
+            --region="$GCP_REGION"
+            --source=functions/dist
+            --entry-point=suggestions
+            --trigger-http
+            --allow-unauthenticated
+          )
+
+          if [[ "$USE_ENV_FILE" == true ]]; then
+            DEPLOY_CMD+=(--env-vars-file=config/functions.prod.env)
+          elif [[ -n "${FUNCTION_ENV_VARS:-}" ]]; then
+            DEPLOY_CMD+=(--set-env-vars="$FUNCTION_ENV_VARS")
+          fi
+
+          "${DEPLOY_CMD[@]}"
