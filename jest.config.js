@@ -13,7 +13,7 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   // Map ESM-only modules to our manual mocks for Jest
   moduleNameMapper: {
-    '^@google/genai$': '<rootDir>/__mocks__/@google/genai.js'
+    '^@google-cloud/vertexai$': '<rootDir>/__mocks__/@google-cloud/vertexai.js'
   },
   // In some environments we may need to increase the default timeout
   testTimeout: 10000,

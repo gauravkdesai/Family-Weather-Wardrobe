@@ -1,5 +1,5 @@
 import type { HttpFunction } from "@google-cloud/functions-framework";
-import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
+import { VertexAI } from "@google-cloud/vertexai";
 import type { GeminiResponse } from '../types';
 import { mockGeminiResponse } from '../mockData';
 
@@ -7,13 +7,23 @@ import { mockGeminiResponse } from '../mockData';
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
 const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
 const MODEL_NAME = process.env.GEMINI_MODEL || '';
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+const LOCATION = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || 'us-central1';
 const USE_MOCK_GEMINI = (process.env.USE_MOCK_GEMINI || '').toLowerCase() === 'true';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
 
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : new GoogleGenAI({} as any); // ADC in production
+const ai = new VertexAI({ project: PROJECT_ID, location: LOCATION });
+
+const asUserContent = (text: string) => ([{ role: 'user', parts: [{ text }] }]);
+const extractText = (response: any): string => {
+    const candidates = response?.response?.candidates || [];
+    const parts = candidates.flatMap((c: any) => c?.content?.parts || []);
+    const text = parts.map((p: any) => p?.text || '').join('');
+    return text ? text.trim() : '';
+};
 
 const requireModel = () => {
     if (!MODEL_NAME) {
@@ -36,48 +46,48 @@ const log = {
 };
 
 const weatherSchema = {
-  type: Type.OBJECT,
-  properties: {
-    location: { type: Type.STRING, description: "City and region, e.g., 'San Francisco, CA'" },
-    highTemp: { type: Type.INTEGER, description: "Highest temperature for the day in Celsius" },
-    lowTemp: { type: Type.INTEGER, description: "Lowest temperature for the day in Celsius" },
-    temp07: { type: Type.INTEGER, description: "Temperature at 7:00 AM in Celsius" },
-    temp12: { type: Type.INTEGER, description: "Temperature at 12:00 noon in Celsius" },
-    temp17: { type: Type.INTEGER, description: "Temperature at 5:00 PM in Celsius" },
-    temp22: { type: Type.INTEGER, description: "Temperature at 10:00 PM in Celsius" },
-    condition07: { type: Type.STRING, description: "Weather condition at 7:00 AM" },
-    condition12: { type: Type.STRING, description: "Weather condition at 12:00 noon" },
-    condition17: { type: Type.STRING, description: "Weather condition at 5:00 PM" },
-    condition22: { type: Type.STRING, description: "Weather condition at 10:00 PM" },
-    dateRange: { type: Type.STRING, description: "For travel packing lists, the interpreted date range for the trip." }
-  },
-  required: ["location", "highTemp", "lowTemp", "temp07", "temp12", "temp17", "temp22", "condition07", "condition12", "condition17", "condition22"],
+    type: 'object',
+    properties: {
+        location: { type: 'string', description: "City and region, e.g., 'San Francisco, CA'" },
+        highTemp: { type: 'integer', description: "Highest temperature for the day in Celsius" },
+        lowTemp: { type: 'integer', description: "Lowest temperature for the day in Celsius" },
+        temp07: { type: 'integer', description: "Temperature at 7:00 AM in Celsius" },
+        temp12: { type: 'integer', description: "Temperature at 12:00 noon in Celsius" },
+        temp17: { type: 'integer', description: "Temperature at 5:00 PM in Celsius" },
+        temp22: { type: 'integer', description: "Temperature at 10:00 PM in Celsius" },
+        condition07: { type: 'string', description: "Weather condition at 7:00 AM" },
+        condition12: { type: 'string', description: "Weather condition at 12:00 noon" },
+        condition17: { type: 'string', description: "Weather condition at 5:00 PM" },
+        condition22: { type: 'string', description: "Weather condition at 10:00 PM" },
+        dateRange: { type: 'string', description: "For travel packing lists, the interpreted date range for the trip." }
+    },
+    required: ["location", "highTemp", "lowTemp", "temp07", "temp12", "temp17", "temp22", "condition07", "condition12", "condition17", "condition22"],
 };
 
 const suggestionSchema = {
-  type: Type.ARRAY,
-  items: {
-    type: Type.OBJECT,
-    properties: {
-      member: { type: Type.STRING, description: "The family member, which must exactly match one of the provided member descriptions." },
-      outfit: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING },
-        description: "An array of clothing items to wear or pack. For items only needed for part of the day, specify when (e.g., 'Jacket (for evening)')."
-      },
-      notes: { type: Type.STRING, description: "A summary of the reasoning for the outfit suggestions. Briefly explain how the weather forecast and the user's schedule (if provided) influenced the choices. This should be a concise paragraph." }
-    },
-    required: ["member", "outfit", "notes"],
-  }
+    type: 'array',
+    items: {
+        type: 'object',
+        properties: {
+            member: { type: 'string', description: "The family member, which must exactly match one of the provided member descriptions." },
+            outfit: {
+                type: 'array',
+                items: { type: 'string' },
+                description: "An array of clothing items to wear or pack. For items only needed for part of the day, specify when (e.g., 'Jacket (for evening)')."
+            },
+            notes: { type: 'string', description: "A summary of the reasoning for the outfit suggestions. Briefly explain how the weather forecast and the user's schedule (if provided) influenced the choices. This should be a concise paragraph." }
+        },
+        required: ["member", "outfit", "notes"],
+    }
 };
 
 const sunriseSunsetSchema = {
-    type: Type.OBJECT,
-    properties: {
-        sunrise: { type: Type.STRING, description: "Local sunrise time in HH:MM 24-hour format" },
-        sunset: { type: Type.STRING, description: "Local sunset time in HH:MM 24-hour format" },
-    },
-    required: ["sunrise", "sunset"],
+        type: 'object',
+        properties: {
+                sunrise: { type: 'string', description: "Local sunrise time in HH:MM 24-hour format" },
+                sunset: { type: 'string', description: "Local sunset time in HH:MM 24-hour format" },
+        },
+        required: ["sunrise", "sunset"],
 };
 
 const jitter = (base: number) => Math.floor(base * (0.5 + Math.random()));
@@ -89,19 +99,17 @@ const getWeatherData = async (prompt: string): Promise<any> => {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const config: GenerateContentParameters['config'] = {
-                responseMimeType: 'application/json',
-                responseSchema: weatherSchema,
-                tools: [{ googleSearch: {} }],
-            };
-
-            const response = await ai.models.generateContent({
-                model: requireModel(),
-                contents: prompt,
-                config,
+            const model = ai.getGenerativeModel({ model: requireModel() });
+            const response = await model.generateContent({
+                contents: asUserContent(prompt),
+                tools: [{ googleSearchRetrieval: {} }] as any,
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: weatherSchema as any,
+                },
             });
 
-            rawText = (response && response.text) ? response.text.trim() : '';
+            rawText = extractText(response);
             let payload = rawText;
             if (payload.startsWith('```json')) {
                 payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -137,18 +145,16 @@ const getClothingSuggestions = async (prompt: string): Promise<any[]> => {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const config: GenerateContentParameters['config'] = {
-                responseMimeType: 'application/json',
-                responseSchema: suggestionSchema,
-            };
-
-            const response = await ai.models.generateContent({
-                model: requireModel(),
-                contents: prompt,
-                config,
+            const model = ai.getGenerativeModel({ model: requireModel() });
+            const response = await model.generateContent({
+                contents: asUserContent(prompt),
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: suggestionSchema as any,
+                },
             });
 
-            rawText = (response && response.text) ? response.text.trim() : '';
+            rawText = extractText(response);
             let payload = rawText;
             if (payload.startsWith('```json')) {
                 payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
@@ -207,19 +213,17 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const config: GenerateContentParameters['config'] = {
-                responseMimeType: 'application/json',
-                responseSchema: sunriseSunsetSchema,
-                tools: [{ googleSearch: {} }],
-            };
-
-            const response = await ai.models.generateContent({
-                model: requireModel(),
-                contents: `Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.` ,
-                config,
+            const model = ai.getGenerativeModel({ model: requireModel() });
+            const response = await model.generateContent({
+                contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.`),
+                tools: [{ googleSearchRetrieval: {} }] as any,
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: sunriseSunsetSchema as any,
+                },
             });
 
-            rawText = (response && response.text) ? response.text.trim() : '';
+            rawText = extractText(response);
             let payload = rawText;
             if (payload.startsWith('```json')) {
                 payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
