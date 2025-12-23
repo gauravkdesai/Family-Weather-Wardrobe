@@ -3,95 +3,48 @@
 ## Architecture
 
 - **Frontend**: GitHub Pages (https://weather-appropriate-wardrobe.gaurav-desai.com)
-- **Backend**: Google Cloud Run (https://backend-service-gwxhmfeqoa-uc.a.run.app)
+- **Backend**: Google Cloud Functions (gen2) HTTP function `wardrobe-suggestions`
 
-## Security
+## What deploys and how
 
-- **CORS**: Backend only accepts requests from authorized domains
-- **Rate Limiting**: 100 requests per hour per IP address
+- `.github/workflows/deploy-pages.yml`: builds with Vite and publishes `dist/` to GitHub Pages using a custom domain. Requires the secret `FUNCTION_URL` set to the Cloud Function HTTPS URL.
+- `.github/workflows/deploy-backend.yml`: builds the function bundle and deploys to Cloud Functions using Workload Identity Federation. Requires secrets `GCP_PROJECT_ID`, `GCP_REGION` (optional, defaults to us-central1), `GCP_SERVICE_ACCOUNT_EMAIL`, and `GCP_WORKLOAD_IDENTITY_PROVIDER`. Env vars for the function can come from repo variable `FUNCTION_ENV_VARS` or the checked-in `config/functions.prod.env` file (non-secret values only).
 
-## Deploy Backend
-
-```bash
-bash scripts/deploy-backend.sh
-```
-
-This deploys the Express.js backend to Cloud Run in `us-central1`.
-
-## Deploy Frontend
+## Frontend deploy (manual)
 
 ```bash
+npm install
+VITE_FUNCTION_URL="https://<your-function>.run.app" npm run build
 npm run deploy
 ```
 
-This builds and deploys to GitHub Pages. First-time setup requires:
+GitHub Pages should already be configured with the custom domain. The Pages workflow handles publishing on pushes to `main` touching frontend files.
 
-### One-Time GitHub Pages Setup
-
-1. Go to repo settings: https://github.com/gauravkdesai/Family-Weather-Wardrobe/settings/pages
-2. Under "Source", select: **Deploy from a branch**
-3. Branch: **gh-pages** (will be created automatically on first deploy)
-4. Folder: **/ (root)**
-5. Click Save
-
-### Custom Domain Setup (weather-appropriate-wardrobe.gaurav-desai.com)
-
-1. **Add DNS Record** in your domain registrar:
-   - Type: `CNAME`
-   - Name: `weather-appropriate-wardrobe`
-   - Value: `gauravkdesai.github.io`
-   - TTL: `3600` (or default)
-
-   Optional (to support `www.weather-appropriate-wardrobe.gaurav-desai.com`):
-   - Type: `CNAME`
-   - Name: `www.weather-appropriate-wardrobe`
-   - Value: `weather-appropriate-wardrobe.gaurav-desai.com`
-
-2. **Configure in GitHub**:
-   - Go to: https://github.com/gauravkdesai/Family-Weather-Wardrobe/settings/pages
-   - Under "Custom domain", enter: `weather-appropriate-wardrobe.gaurav-desai.com`
-   - Check "Enforce HTTPS" (wait for certificate to provision, ~15 minutes)
-
-3. **Verify**: 
-   ```bash
-   dig weather-appropriate-wardrobe.gaurav-desai.com CNAME
-   dig www.weather-appropriate-wardrobe.gaurav-desai.com CNAME
-   # Should show: weather-appropriate-wardrobe.gaurav-desai.com. 3600 IN CNAME gauravkdesai.github.io.
-   # And: www.weather-appropriate-wardrobe.gaurav-desai.com. 3600 IN CNAME weather-appropriate-wardrobe.gaurav-desai.com.
-   ```
-
-## Testing Locally
+## Backend deploy (manual)
 
 ```bash
-# Start frontend dev server
+npm install
+npm run build:functions
+gcloud functions deploy wardrobe-suggestions \
+  --gen2 --runtime nodejs20 --region=us-central1 \
+  --source=functions/dist --entry-point=suggestions \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars "GEMINI_MODEL=gemini-2.5-flash,ALLOWED_ORIGINS=https://weather-appropriate-wardrobe.gaurav-desai.com,https://gauravkdesai.github.io,http://localhost:5173"
+```
+
+## Testing locally
+
+```bash
+# Start frontend dev server (uses mock data unless VITE_FUNCTION_URL is set)
 npm run dev
 
-# In another terminal, test backend locally
-cd backend
-npm install
-npm start
+# Dry-run function logic (unit tests) if present
+npm test -- functions
 ```
 
-## Allowed Origins
+## Environment variables (recommended defaults)
 
-Update `backend/server.js` if you need to add more allowed origins:
-
-```javascript
-const allowedOrigins = [
-  'https://weather-appropriate-wardrobe.gaurav-desai.com',
-  'https://gauravkdesai.github.io',
-  'http://localhost:5173',
-];
-```
-
-## Removing Old GCS Deployment
-
-To clean up the old Google Cloud Storage deployment:
-
-```bash
-# List buckets
-gsutil ls
-
-# Delete the frontend bucket (if you want to remove it)
-gsutil -m rm -r gs://fw-wardrobe-frontend-gen-lang-client-0325151027
-```
+See `.env.example` for both frontend (Vite) and backend (Cloud Function) values. For production, non-secret defaults live in `.env.production` (frontend) and `config/functions.prod.env` (backend). Key ones:
+- `GEMINI_MODEL`: required (e.g., `gemini-2.5-flash`)
+- `GEMINI_MAX_RETRIES`: default `3`
+- `ALLOWED_ORIGINS`: required comma-separated allowlist for CORS

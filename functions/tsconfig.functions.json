@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": false,
+    "strict": false,
+    "types": ["node"]
+  },
+  "include": ["./suggestions.ts", "../types.ts", "../mockData.ts"],
+  "exclude": ["../node_modules", "../dist", "../.github", "../components", "../services", "../__mocks__", "../public"]
+}

@@ -1,0 +1,73 @@
+name: Deploy Backend (Cloud Functions)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'functions/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-backend.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  FUNCTION_NAME: wardrobe-suggestions
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
+  SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+  WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  FUNCTION_ENV_VARS: ${{ vars.FUNCTION_ENV_VARS }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build function bundle
+        run: npm run build:functions
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Deploy Cloud Function (gen2)
+        run: |
+          set -euo pipefail
+
+          # If FUNCTION_ENV_VARS not provided via repo var/secret, derive from checked-in config file
+          if [[ -z "${FUNCTION_ENV_VARS:-}" ]] && [[ -f config/functions.prod.env ]]; then
+            FUNCTION_ENV_VARS=$(grep -v '^#' config/functions.prod.env | xargs | sed 's/ /,/g')
+          fi
+
+          gcloud functions deploy "$FUNCTION_NAME" \
+            --gen2 \
+            --runtime=nodejs20 \
+            --region="$GCP_REGION" \
+            --source=functions/dist \
+            --entry-point=suggestions \
+            --trigger-http \
+            --allow-unauthenticated \
+            ${FUNCTION_ENV_VARS:+--set-env-vars="$FUNCTION_ENV_VARS"}

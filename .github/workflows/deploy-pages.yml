@@ -11,9 +11,9 @@ on:
       - 'index.tsx'
       - 'index.html'
       - 'index.css'
-      - 'build.mjs'
       - 'public/**'
       - 'package.json'
+      - '.github/workflows/deploy-pages.yml'
 
 permissions:
   contents: write  # allow GITHUB_TOKEN to push to gh-pages
@@ -38,7 +38,12 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: |
+          # If a secret/function URL is provided, export it to override .env.production
+          if [[ -n "${{ secrets.FUNCTION_URL }}" ]]; then
+            export VITE_FUNCTION_URL="${{ secrets.FUNCTION_URL }}"
+          fi
+          npm run build
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

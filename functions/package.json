@@ -1,0 +1,13 @@
+{
+  "name": "family-weather-wardrobe-functions",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/suggestions.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.functions.json"
+  },
+  "dependencies": {
+    "@google/genai": "^1.28.0"
+  }
+}

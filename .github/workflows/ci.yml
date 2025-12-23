@@ -20,11 +20,6 @@ jobs:
       - name: Install dependencies (root)
         run: npm ci
 
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm ci
-
       - name: Run tests (if present)
         run: npm test --if-present -- --runInBand
 

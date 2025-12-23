@@ -1,12 +1,33 @@
 import type { HttpFunction } from "@google-cloud/functions-framework";
 import { GoogleGenAI, Type, GenerateContentParameters } from "@google/genai";
-import { GeminiResponse } from '../types';
+import type { GeminiResponse } from '../types';
+import { mockGeminiResponse } from '../mockData';
 
 // Prefer ADC (Application Default Credentials) or Secret Manager for production.
-// If an explicit API key is provided (for local development), use it.
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
 const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+const MODEL_NAME = process.env.GEMINI_MODEL || '';
+const USE_MOCK_GEMINI = (process.env.USE_MOCK_GEMINI || '').toLowerCase() === 'true';
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
 const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : new GoogleGenAI({} as any); // ADC in production
+
+const requireModel = () => {
+    if (!MODEL_NAME) {
+        throw new Error('GEMINI_MODEL is required');
+    }
+    return MODEL_NAME;
+};
+
+const requireAllowedOrigins = () => {
+    if (!allowedOrigins.length) {
+        throw new Error('ALLOWED_ORIGINS is required');
+    }
+    return allowedOrigins;
+};
 
 // Structured logging helper (simple)
 const log = {
@@ -75,7 +96,7 @@ const getWeatherData = async (prompt: string): Promise<any> => {
             };
 
             const response = await ai.models.generateContent({
-                model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+                model: requireModel(),
                 contents: prompt,
                 config,
             });
@@ -122,7 +143,7 @@ const getClothingSuggestions = async (prompt: string): Promise<any[]> => {
             };
 
             const response = await ai.models.generateContent({
-                model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+                model: requireModel(),
                 contents: prompt,
                 config,
             });
@@ -193,7 +214,7 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
             };
 
             const response = await ai.models.generateContent({
-                model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+                model: requireModel(),
                 contents: `Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.` ,
                 config,
             });
@@ -321,19 +342,37 @@ Consider local clothing norms and styles for ${weatherData.location}.`;
 
 
 export const suggestions: HttpFunction = async (req, res) => {
-    // Set CORS headers for preflight requests
-    res.set('Access-Control-Allow-Origin', '*');
+    const origin = req.get('Origin') || '';
+    let originAllowed = false;
+    try {
+        const origins = requireAllowedOrigins();
+        const allowAll = origins.includes('*');
+        originAllowed = allowAll || origins.includes(origin);
+        res.set('Access-Control-Allow-Origin', allowAll ? '*' : originAllowed ? origin : '');
+    } catch (e) {
+        res.status(500).json({ error: (e as Error).message });
+        return;
+    }
+
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {
-        // Send response to preflight OPTIONS requests
+        if (!originAllowed) {
+            res.status(403).send('');
+            return;
+        }
         res.status(204).send('');
         return;
     }
 
     if (req.method !== 'POST') {
         res.status(405).json({ error: 'Method Not Allowed' });
+        return;
+    }
+
+    if (!originAllowed) {
+        res.status(403).json({ error: 'Origin not allowed' });
         return;
     }
 
@@ -370,6 +409,17 @@ export const suggestions: HttpFunction = async (req, res) => {
             default:
                 res.status(400).json({ error: 'Invalid request type provided.' });
                 return;
+        }
+
+        // Optional mock mode to avoid calling Gemini
+        if (USE_MOCK_GEMINI) {
+            res.status(200).json(mockGeminiResponse);
+            return;
+        }
+
+        if (!MODEL_NAME) {
+            res.status(500).json({ error: 'GEMINI_MODEL is required' });
+            return;
         }
 
         // Step 1: Get weather data from Google Search

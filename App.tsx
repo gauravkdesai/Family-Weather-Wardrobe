@@ -31,6 +31,21 @@ const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
   </div>
 );
 
+const friendlyError = (err: unknown): string => {
+  const raw = err instanceof Error ? err.message : String(err || 'Unknown error');
+  const lower = raw.toLowerCase();
+  if (lower.includes('function url is not configured')) {
+    return 'Backend is not configured. Please set VITE_FUNCTION_URL or try again later.';
+  }
+  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('aborterror')) {
+    return 'Could not reach the backend. Please check your connection and try again.';
+  }
+  if (lower.includes('cors')) {
+    return 'Request was blocked by CORS. Please try again or contact support if it persists.';
+  }
+  return raw;
+};
+
 // FIX: Define the missing ResultsBlock component.
 interface ResultsBlockProps {
   title: string;
@@ -243,7 +258,7 @@ const App: React.FC = () => {
           setTempUnit(inferRegionUnit(result.weather.location));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+        setError(friendlyError(err));
       } finally {
         if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
         setDailyLoadingMessage(null);
@@ -289,7 +304,7 @@ const App: React.FC = () => {
             setTempUnit(inferRegionUnit(result.weather.location));
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : "An unknown error occurred.");
+          setError(friendlyError(err));
         } finally {
           if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
           setDailyLoadingMessage(null);
@@ -349,7 +364,7 @@ const App: React.FC = () => {
         setTempUnit(inferRegionUnit(result.weather.location));
       }
     } catch (err) {
-      setTravelError(err instanceof Error ? err.message : "An unknown error occurred.");
+      setTravelError(friendlyError(err));
     } finally {
       if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setTravelLoadingMessage(null);

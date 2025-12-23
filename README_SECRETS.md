@@ -1,4 +1,6 @@
-# Secret Manager & Cloud Run: secure secret injection
+# Secret Manager (legacy Cloud Run notes)
+
+> Note: The app now deploys its backend as a Cloud Function. This document is kept for reference only and describes the previous Cloud Run setup.
 
 This guide shows recommended steps and `gcloud` commands to store secrets in **Secret Manager**, grant Cloud Run access using a dedicated service account (principle of least privilege), and inject secrets into Cloud Run as environment variables at deployment time. It also includes a small Cloud Build snippet showing how to access secrets during CI/CD without embedding them in images.
 

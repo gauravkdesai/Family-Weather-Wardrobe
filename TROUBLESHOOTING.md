@@ -4,32 +4,29 @@
 
 ### 1. Build or Install Fails
 - Ensure Node.js 20.x is installed (`node -v`).
-- Run `npm ci` in both root and `backend/`.
+- Run `npm ci` in repo root.
 - Delete `node_modules` and `package-lock.json` if issues persist, then retry.
 
 ### 2. Frontend Not Connecting to Backend
-- Check that `FUNCTION_URL` is set correctly in your environment.
-- For local dev, set `USE_MOCK_GEMINI=true` to use mock data.
-- Ensure backend is running and accessible (default port 8080).
+- Check that `VITE_FUNCTION_URL` (build-time) or `FUNCTION_URL` (runtime) points to the Cloud Function URL.
+- For local dev, set `VITE_USE_MOCK_GEMINI=true` to use mock data.
+- Confirm the Cloud Function allows your origin via `ALLOWED_ORIGINS`.
 
 ### 3. Cloud Build or Deploy Fails
-- Verify GCP project, IAM roles, and service account permissions.
-- Ensure Secret Manager secrets exist and are accessible.
-- Confirm KMS key setup for cosign signing (see `README_SECRETS.md`).
-- Check Artifact Registry permissions.
+- Verify GCP project, IAM roles, and service account permissions for Cloud Functions and Vertex AI.
+- Ensure secrets/env vars are provided via `FUNCTION_ENV_VARS` or GitHub secrets as needed.
+- Check GitHub Actions logs for auth (Workload Identity Federation) errors.
 
 ### 4. Tests Fail
-- Run `npm test` in root and backend.
+- Run `npm test` in repo root.
 - Ensure all dependencies are installed.
 - Check for missing or outdated devDependencies.
 
 ### 5. Docker Build Issues
-- Ensure `.dockerignore` is present and excludes large/unwanted files.
-- Use `node:20-slim` for backend and pin base images.
-- Run `docker build` from repo root for frontend/backend.
+- Docker builds are no longer required (Cloud Functions). If you do containerize, pin to `node:20-slim` and keep images minimal.
 
 ### 6. Secrets Not Injected
-- For Cloud Run, use `--set-secrets` to inject secrets from Secret Manager.
+- For Cloud Functions, use `--set-env-vars` or the GitHub Actions variable `FUNCTION_ENV_VARS` to provide secrets/keys.
 - Locally, set env vars manually or use a `.env` file (never commit).
 
 ### 7. SBOM or Cosign Signing Fails
@@ -38,9 +35,9 @@
 - Check Cloud Build logs for error details.
 
 ## Debugging Tips
-- Use verbose logging (`LOG_LEVEL=debug`) for backend.
-- Check logs in GCP Cloud Logging for deployed services.
-- Use `gcloud` CLI to inspect service status and IAM bindings.
+- Use verbose logging via Cloud Function logs.
+- Check logs in GCP Cloud Logging for the `wardrobe-suggestions` function.
+- Use `gcloud functions describe/read` to inspect function status and IAM bindings.
 
 ## Getting Help
 - Review `CONTRIBUTING.md` for setup steps.

@@ -4,7 +4,7 @@ jest.mock('focus-trap-react', () => ({
   __esModule: true,
   default: ({ children }: any) => children,
 }));
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import FamilyConfigModal from '../FamilyConfigModal';
 
@@ -27,14 +27,18 @@ describe('FamilyConfigModal focus trap', () => {
 
     // Open confirm
     const clearButton = screen.getByRole('button', { name: /clear local preferences/i });
-    await user.click(clearButton);
+    await act(async () => {
+      await user.click(clearButton);
+    });
 
     // Expect the confirm/panel to be visible and confirm directly (avoid flaky reopen logic)
     const yesButton = await screen.findByRole('button', { name: /yes, clear/i });
     expect(yesButton).toBeInTheDocument();
 
     // Click confirm -> should call the clear and close callbacks
-    await user.click(yesButton);
+    await act(async () => {
+      await user.click(yesButton);
+    });
     expect(clearLocalPreferences).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });

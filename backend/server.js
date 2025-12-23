@@ -8,48 +8,22 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
-const { getWeatherData, getClothingSuggestions, mapConditionToIcon, createWeatherPrompt, createClothingPrompt, createTravelWeatherPrompt, createTravelClothingPrompt } = require('./geminiClient');
+const { callGemini, createDailyPrompt, createTravelPrompt } = require('./geminiClient');
 const winston = require('winston');
 
 
 const app = express();
 // Trust proxy for Cloud Run (required for rate limiting with X-Forwarded-For)
 app.set('trust proxy', true);
-
-// Allowed origins for CORS (only your domains)
-const allowedOrigins = [
-  'https://weather-appropriate-wardrobe.gaurav-desai.com',
-  'https://www.weather-appropriate-wardrobe.gaurav-desai.com',
-  'https://gauravkdesai.github.io',
-  'http://localhost:5173',  // Local development with Vite
-  'http://localhost:3000',  // Local development alternatives
-];
-
-// CORS configuration - only allow requests from specific origins
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, Postman)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      logger.warn('Blocked request from unauthorized origin', { origin });
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-}));
-
+app.use(cors());
 app.use(bodyParser.json({ limit: '128kb' }));
 
-// Rate limiting: 100 requests per hour per IP
+// Rate limiting: 100 requests per 15 minutes per IP
 const limiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later.' },
 });
 app.use(limiter);
 
@@ -92,31 +66,21 @@ app.post('/suggestions', async (req, res) => {
     const body = parseResult.data;
     const { requestType } = body;
 
-    let weatherPrompt;
-    let clothingPrompt;
-    let family;
-    let schedule;
-
-    // Step 1: Get weather data with Google Search
+    let prompt;
     switch (requestType) {
       case 'geolocation': {
-        const { lat, lon, family: fam, day, schedule: sched } = body;
-        family = fam;
-        schedule = sched;
-        weatherPrompt = createWeatherPrompt(day, { lat, lon });
+        const { lat, lon, family, day, schedule } = body;
+        prompt = createDailyPrompt(family, day, schedule, { lat, lon });
         break;
       }
       case 'location': {
-        const { location, family: fam, day, schedule: sched } = body;
-        family = fam;
-        schedule = sched;
-        weatherPrompt = createWeatherPrompt(day, { location });
+        const { location, family, day, schedule } = body;
+        prompt = createDailyPrompt(family, day, schedule, { location });
         break;
       }
       case 'travel': {
-        const { destinationAndDuration, family: fam } = body;
-        family = fam;
-        weatherPrompt = createTravelWeatherPrompt(destinationAndDuration);
+        const { destinationAndDuration, family } = body;
+        prompt = createTravelPrompt(destinationAndDuration, family);
         break;
       }
       default:
@@ -124,62 +88,8 @@ app.post('/suggestions', async (req, res) => {
         return;
     }
 
-    logger.info('Fetching weather data with Google Search');
-    const weatherData = await getWeatherData(weatherPrompt);
-
-    // Step 2: Get clothing suggestions from Gemini
-    logger.info('Generating clothing suggestions');
-    if (requestType === 'travel') {
-      clothingPrompt = createTravelClothingPrompt(family, weatherData);
-    } else {
-      clothingPrompt = createClothingPrompt(family, weatherData, schedule);
-    }
-    const suggestions = await getClothingSuggestions(clothingPrompt);
-
-    // Step 3: Construct response with FIXED times
-    const dayParts = [
-      {
-        period: 'Morning',
-        time: '07:00',
-        temp: weatherData.temp07,
-        condition: weatherData.condition07,
-        conditionIcon: mapConditionToIcon(weatherData.condition07)
-      },
-      {
-        period: 'Afternoon',
-        time: '12:00',
-        temp: weatherData.temp12,
-        condition: weatherData.condition12,
-        conditionIcon: mapConditionToIcon(weatherData.condition12)
-      },
-      {
-        period: 'Evening',
-        time: '17:00',
-        temp: weatherData.temp17,
-        condition: weatherData.condition17,
-        conditionIcon: mapConditionToIcon(weatherData.condition17)
-      },
-      {
-        period: 'Night',
-        time: '22:00',
-        temp: weatherData.temp22,
-        condition: weatherData.condition22,
-        conditionIcon: mapConditionToIcon(weatherData.condition22)
-      }
-    ];
-
-    const result = {
-      weather: {
-        location: weatherData.location,
-        highTemp: weatherData.highTemp,
-        lowTemp: weatherData.lowTemp,
-        dayParts,
-        ...(weatherData.dateRange && { dateRange: weatherData.dateRange })
-      },
-      suggestions
-    };
-
-    logger.info('Response constructed', { hasWeather: !!result.weather, hasSuggestions: !!result.suggestions });
+    const result = await callGemini(prompt, false);
+    logger.info('Gemini response', { hasWeather: !!result.weather, hasSuggestions: !!result.suggestions });
     res.json(result);
   } catch (err) {
     logger.error('Suggestion error', { error: err && err.message ? err.message : String(err) });
