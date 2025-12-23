@@ -9,6 +9,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/deploy-backend.yml'
+      - 'config/functions.prod.yaml'
 
 permissions:
   contents: read
