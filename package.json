@@ -7,7 +7,7 @@
     "start": "vite",
     "preview": "vite preview --port 3000",
     "build": "vite build",
-    "build:functions": "tsc -p functions/tsconfig.functions.json && node -e \"const fs=require('fs'); const pkg={name:'family-weather-wardrobe-functions',version:'1.0.0',main:'suggestions.js',type:'commonjs',dependencies:{'@google-cloud/functions-framework':'^4.0.1','@google/genai':'^1.28.0'}}; fs.writeFileSync('functions/dist/package.json', JSON.stringify(pkg,null,2));\"",
+    "build:functions": "tsc -p functions/tsconfig.functions.json && node -e \"const fs=require('fs'); const pkg={name:'family-weather-wardrobe-functions',version:'1.0.0',main:'functions/suggestions.js',type:'commonjs',dependencies:{'@google-cloud/functions-framework':'^4.0.1','@google/genai':'^1.28.0'}}; fs.writeFileSync('functions/dist/package.json', JSON.stringify(pkg,null,2));\"",
     "test": "jest --passWithNoTests",
     "lint": "echo \"No linter configured\" && exit 0",
     "predeploy": "npm run build",
