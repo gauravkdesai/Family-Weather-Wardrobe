@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'App.tsx'
+      - 'components/**'
+      - 'services/**'
+      - 'index.tsx'
+      - 'index.html'
+      - 'index.css'
+      - 'public/**'
+      - 'package.json'
+      - '.github/workflows/deploy-pages.yml'
+      - '.env.production'
 
 permissions:
   contents: write  # allow GITHUB_TOKEN to push to gh-pages
