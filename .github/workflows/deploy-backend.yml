@@ -82,26 +82,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          USE_ENV_FILE=false
-          if [[ -z "${FUNCTION_ENV_VARS:-}" ]] && [[ -f config/functions.prod.env ]]; then
-            USE_ENV_FILE=true
+          ENV_FLAG=()
+
+          if [[ -n "${FUNCTION_ENV_VARS:-}" ]]; then
+            ENV_FLAG=(--set-env-vars="$FUNCTION_ENV_VARS")
+          elif [[ -f config/functions.prod.yaml ]]; then
+            ENV_FLAG=(--env-vars-file=config/functions.prod.yaml)
           fi
 
-          DEPLOY_CMD=(
-            gcloud functions deploy "$FUNCTION_NAME"
-            --gen2
-            --runtime=nodejs20
-            --region="$GCP_REGION"
-            --source=functions/dist
-            --entry-point=suggestions
-            --trigger-http
-            --allow-unauthenticated
-          )
-
-          if [[ "$USE_ENV_FILE" == true ]]; then
-            DEPLOY_CMD+=(--env-vars-file=config/functions.prod.env)
-          elif [[ -n "${FUNCTION_ENV_VARS:-}" ]]; then
-            DEPLOY_CMD+=(--set-env-vars="$FUNCTION_ENV_VARS")
-          fi
-
-          "${DEPLOY_CMD[@]}"
+          gcloud functions deploy "$FUNCTION_NAME" \
+            --gen2 \
+            --runtime=nodejs20 \
+            --region="$GCP_REGION" \
+            --source=functions/dist \
+            --entry-point=suggestions \
+            --trigger-http \
+            --allow-unauthenticated \
+            ${ENV_FLAG[@]:+${ENV_FLAG[@]}}

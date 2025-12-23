@@ -8,7 +8,7 @@
 ## What deploys and how
 
 - `.github/workflows/deploy-pages.yml`: builds with Vite and publishes `dist/` to GitHub Pages using a custom domain. Requires the secret `FUNCTION_URL` set to the Cloud Function HTTPS URL.
-- `.github/workflows/deploy-backend.yml`: builds the function bundle and deploys to Cloud Functions using Workload Identity Federation. Requires secrets `GCP_PROJECT_ID`, `GCP_REGION` (optional, defaults to us-central1), `GCP_SERVICE_ACCOUNT_EMAIL`, and `GCP_WORKLOAD_IDENTITY_PROVIDER`. Env vars for the function can come from repo variable `FUNCTION_ENV_VARS` or the checked-in `config/functions.prod.env` file (non-secret values only).
+- `.github/workflows/deploy-backend.yml`: builds the function bundle and deploys to Cloud Functions using Workload Identity Federation. Requires secrets `GCP_PROJECT_ID`, `GCP_REGION` (optional, defaults to us-central1), `GCP_SERVICE_ACCOUNT_EMAIL`, and `GCP_WORKLOAD_IDENTITY_PROVIDER`. Env vars for the function can come from repo variable `FUNCTION_ENV_VARS` or the checked-in `config/functions.prod.yaml` file (non-secret values only).
 
 ## Frontend deploy (manual)
 
@@ -29,7 +29,7 @@ gcloud functions deploy wardrobe-suggestions \
   --gen2 --runtime nodejs20 --region=us-central1 \
   --source=functions/dist --entry-point=suggestions \
   --trigger-http --allow-unauthenticated \
-  --set-env-vars "GEMINI_MODEL=gemini-2.5-flash,ALLOWED_ORIGINS=https://weather-appropriate-wardrobe.gaurav-desai.com,https://gauravkdesai.github.io,http://localhost:5173"
+  --env-vars-file config/functions.prod.yaml
 ```
 
 ## Testing locally
@@ -44,7 +44,7 @@ npm test -- functions
 
 ## Environment variables (recommended defaults)
 
-See `.env.example` for both frontend (Vite) and backend (Cloud Function) values. For production, non-secret defaults live in `.env.production` (frontend) and `config/functions.prod.env` (backend). Key ones:
+See `.env.example` for both frontend (Vite) and backend (Cloud Function) values. For production, non-secret defaults live in `.env.production` (frontend) and `config/functions.prod.yaml` (backend). Key ones:
 - `GEMINI_MODEL`: required (e.g., `gemini-2.5-flash`)
 - `GEMINI_MAX_RETRIES`: default `3`
 - `ALLOWED_ORIGINS`: required comma-separated allowlist for CORS

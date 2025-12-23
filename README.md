@@ -56,7 +56,7 @@ CI (`.github/workflows/ci.yml`) installs dependencies and runs tests/lint. Deplo
 - `ALLOWED_ORIGINS`: Required comma-separated allowlist for CORS
 - `USE_MOCK_GEMINI`: Set `true` to bypass Gemini calls
 
-Production non-secrets are captured in `config/functions.prod.env` (backend) and `.env.production` (frontend). Do not put secrets (API keys) in these checked-in files.
+Production non-secrets are captured in `config/functions.prod.yaml` (backend) and `.env.production` (frontend). Do not put secrets (API keys) in these checked-in files.
 
 ### Frontend Environment (Vite)
 - `VITE_FUNCTION_URL`: Cloud Function URL (required for live data)

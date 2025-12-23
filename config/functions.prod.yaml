@@ -1,0 +1,4 @@
+GEMINI_MODEL: "gemini-2.5-flash"
+GEMINI_MAX_RETRIES: "3"
+ALLOWED_ORIGINS: "https://weather-appropriate-wardrobe.gaurav-desai.com,https://gauravkdesai.github.io"
+USE_MOCK_GEMINI: "false"
