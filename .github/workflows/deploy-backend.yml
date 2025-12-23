@@ -20,6 +20,7 @@ env:
   GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
   SERVICE_ACCOUNT_EMAIL: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
   WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
   FUNCTION_ENV_VARS: ${{ vars.FUNCTION_ENV_VARS }}
 
 jobs:
@@ -41,12 +42,36 @@ jobs:
       - name: Build function bundle
         run: npm run build:functions
 
-      - name: Authenticate to Google Cloud
+      - name: Validate auth inputs
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${GCP_CREDENTIALS_JSON}" ]]; then
+            echo "Using GCP_CREDENTIALS_JSON secret for auth"
+            exit 0
+          fi
+
+          if [[ -n "${WORKLOAD_IDENTITY_PROVIDER}" && -n "${SERVICE_ACCOUNT_EMAIL}" ]]; then
+            echo "Using Workload Identity Federation for auth"
+            exit 0
+          fi
+
+          echo "Missing auth configuration. Set either GCP_CREDENTIALS_JSON or both GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT_EMAIL secrets." >&2
+          exit 1
+
+      - name: Authenticate to Google Cloud (WIF)
+        if: env.GCP_CREDENTIALS_JSON == '' && env.WORKLOAD_IDENTITY_PROVIDER != '' && env.SERVICE_ACCOUNT_EMAIL != ''
         uses: google-github-actions/auth@v2
         with:
           token_format: access_token
           workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Authenticate to Google Cloud (JSON key)
+        if: env.GCP_CREDENTIALS_JSON != ''
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ env.GCP_CREDENTIALS_JSON }}
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
