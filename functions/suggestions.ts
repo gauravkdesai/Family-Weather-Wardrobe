@@ -5,7 +5,6 @@ import { mockGeminiResponse } from '../mockData';
 
 // Prefer ADC (Application Default Credentials) or Secret Manager for production.
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
-const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
 const MODEL_NAME = process.env.GEMINI_MODEL || '';
 const PROJECT_ID = process.env.GCLOUD_PROJECT
     || process.env.GCP_PROJECT
