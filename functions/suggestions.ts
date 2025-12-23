@@ -11,7 +11,7 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT
     || process.env.GOOGLE_CLOUD_PROJECT
     || process.env.PROJECT_ID
     || process.env.PROJECT_NUMBER;
-const LOCATION = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || 'us-central1';
+const LOCATION = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || process.env.FUNCTION_REGION;
 const USE_MOCK_GEMINI = (process.env.USE_MOCK_GEMINI || '').toLowerCase() === 'true';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
