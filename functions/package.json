@@ -5,10 +5,14 @@
   "main": "dist/functions/suggestions.js",
   "type": "commonjs",
   "scripts": {
-    "build": "tsc -p tsconfig.functions.json"
+    "build": "tsc -p tsconfig.functions.json",
+    "gcp-build": "npm run build"
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^4.0.1",
     "@google-cloud/vertexai": "^1.9.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
