@@ -112,14 +112,11 @@ const getWeatherData = async (prompt: string): Promise<any> => {
 
             rawText = extractText(response);
             let payload = rawText;
-            if (payload.startsWith('```json')) {
-                payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            } else {
-                const b = payload.indexOf('{');
-                const e = payload.lastIndexOf('}');
-                if (b >= 0 && e > b) payload = payload.substring(b, e + 1);
+            const b = payload.indexOf('{');
+            const e = payload.lastIndexOf('}');
+            if (b >= 0 && e > b) {
+                payload = payload.substring(b, e + 1);
             }
-
             const parsed = JSON.parse(payload);
             if (!parsed || !parsed.location) {
                 throw new Error('Missing location in weather data');
@@ -222,14 +219,11 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
 
             rawText = extractText(response);
             let payload = rawText;
-            if (payload.startsWith('```json')) {
-                payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            } else {
-                const b = payload.indexOf('{');
-                const e = payload.lastIndexOf('}');
-                if (b >= 0 && e > b) payload = payload.substring(b, e + 1);
+            const b = payload.indexOf('{');
+            const e = payload.lastIndexOf('}');
+            if (b >= 0 && e > b) {
+                payload = payload.substring(b, e + 1);
             }
-
             const parsed = JSON.parse(payload);
             const sunriseMinutes = parseTimeToMinutes(parsed.sunrise);
             const sunsetMinutes = parseTimeToMinutes(parsed.sunset);
