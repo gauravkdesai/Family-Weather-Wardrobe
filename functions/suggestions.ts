@@ -64,9 +64,11 @@ const weatherSchema = {
         condition12: { type: 'string', description: "Weather condition at 12:00 noon" },
         condition17: { type: 'string', description: "Weather condition at 5:00 PM" },
         condition22: { type: 'string', description: "Weather condition at 10:00 PM" },
+        sunrise: { type: 'string', description: "Local sunrise time in HH:MM 24-hour format" },
+        sunset: { type: 'string', description: "Local sunset time in HH:MM 24-hour format" },
         dateRange: { type: 'string', description: "For travel packing lists, the interpreted date range for the trip." }
     },
-    required: ["location", "highTemp", "lowTemp", "temp07", "temp12", "temp17", "temp22", "condition07", "condition12", "condition17", "condition22"],
+    required: ["location", "highTemp", "lowTemp", "temp07", "temp12", "temp17", "temp22", "condition07", "condition12", "condition17", "condition22", "sunrise", "sunset"],
 };
 
 const suggestionSchema = {
@@ -84,15 +86,6 @@ const suggestionSchema = {
         },
         required: ["member", "outfit", "notes"],
     }
-};
-
-const sunriseSunsetSchema = {
-        type: 'object',
-        properties: {
-                sunrise: { type: 'string', description: "Local sunrise time in HH:MM 24-hour format" },
-                sunset: { type: 'string', description: "Local sunset time in HH:MM 24-hour format" },
-        },
-        required: ["sunrise", "sunset"],
 };
 
 const jitter = (base: number) => Math.floor(base * (0.5 + Math.random()));
@@ -205,50 +198,6 @@ const parseTimeToMinutes = (time: string): number | null => {
     return hours * 60 + minutes;
 };
 
-const getSunriseSunset = async (location: string): Promise<{ sunrise: number, sunset: number }> => {
-    let lastErr: Error | null = null;
-    let rawText = '';
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            const model = ai.getGenerativeModel({ model: requireModel() });
-            const response = await model.generateContent({
-                contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format. Return a valid JSON object with keys "sunrise" and "sunset".`),
-                tools: [{ googleSearch: {} }] as any,
-            });
-
-            rawText = extractText(response);
-            let payload = rawText;
-            const b = payload.indexOf('{');
-            const e = payload.lastIndexOf('}');
-            if (b >= 0 && e > b) {
-                payload = payload.substring(b, e + 1);
-            }
-            const parsed = JSON.parse(payload);
-            const sunriseMinutes = parseTimeToMinutes(parsed.sunrise);
-            const sunsetMinutes = parseTimeToMinutes(parsed.sunset);
-            if (sunriseMinutes === null || sunsetMinutes === null) {
-                throw new Error('Invalid sunrise/sunset format');
-            }
-            return { sunrise: sunriseMinutes, sunset: sunsetMinutes };
-        } catch (err) {
-            lastErr = err instanceof Error ? err : new Error(String(err));
-            log.error('getSunriseSunset attempt failed', { attempt, error: lastErr.message });
-            if (attempt === MAX_RETRIES) {
-                log.error('getSunriseSunset final failure', { rawText });
-                break;
-            }
-            const waitMs = jitter(400 * Math.pow(2, attempt));
-            await new Promise(r => setTimeout(r, waitMs));
-        }
-    }
-
-    // Fallback: approximate times if API call fails
-    const fallback = { sunrise: 6 * 60 + 30, sunset: 18 * 60 + 30 };
-    log.info('Using fallback sunrise/sunset', fallback);
-    return fallback;
-};
-
 export const createWeatherPrompt = (day: 'today' | 'tomorrow', locationInfo?: { lat: number, lon: number } | { location: string }): string => {
     const dayPromptPart = day === 'tomorrow' ? 'for tomorrow' : 'for today';
     
@@ -261,6 +210,8 @@ export const createWeatherPrompt = (day: 'today' | 'tomorrow', locationInfo?: { 
 
     return `Using real-time weather data from Google Search ${dayPromptPart} ${locationPromptPart}, provide the weather forecast.
 If the location is in Switzerland, prioritize weather data from MeteoSchweiz. For all other locations, use the best available real-time weather data.
+Also find the local sunrise and sunset times.
+
 The response MUST be a single, valid JSON object with these exact fields:
 - "location": the city and region (e.g., "Zurich, Switzerland")
 - "highTemp": the day's high temperature in Celsius (integer)
@@ -273,6 +224,8 @@ The response MUST be a single, valid JSON object with these exact fields:
 - "condition12": brief weather condition at 12:00 noon
 - "condition17": brief weather condition at 5:00 PM
 - "condition22": brief weather condition at 10:00 PM
+- "sunrise": Local sunrise time in HH:MM 24-hour format
+- "sunset": Local sunset time in HH:MM 24-hour format
 
 Use Google Search to get accurate, real-time weather data. Do not make up or estimate temperatures.`;
 };
@@ -300,6 +253,8 @@ Clothing suggestions must be practical for the full day's temperature range and 
 
 export const createTravelWeatherPrompt = (destinationAndDuration: string): string => {
     return `Using real-time weather data from Google Search for an upcoming trip to ${destinationAndDuration}, provide a weather summary.
+Also find the typical sunrise and sunset times for this period.
+
 The response MUST be a single, valid JSON object with these exact fields:
 - "location": the destination (e.g., "Paris, France")
 - "dateRange": the interpreted date range for the trip (e.g., "Dec 24, 2024 - Dec 28, 2024")
@@ -313,6 +268,8 @@ The response MUST be a single, valid JSON object with these exact fields:
 - "condition12": brief weather condition at 12:00 noon
 - "condition17": brief weather condition at 5:00 PM
 - "condition22": brief weather condition at 10:00 PM
+- "sunrise": Local sunrise time in HH:MM 24-hour format
+- "sunset": Local sunset time in HH:MM 24-hour format
 
 Use Google Search to get accurate weather forecast data.`;
 };
@@ -417,12 +374,22 @@ export const suggestions: HttpFunction = async (req, res) => {
             return;
         }
 
-        // Step 1: Get weather data from Google Search
+        // Step 1: Get weather data from Google Search (now includes sunrise/sunset)
         log.info('Fetching weather data with Google Search');
         const weatherData = await getWeatherData(weatherPrompt);
 
-        // Step 1b: Fetch sunrise/sunset for night-aware icons
-        const { sunrise, sunset } = await getSunriseSunset(weatherData.location);
+        // Step 1b: Use sunrise/sunset from weather data or fallback
+        let sunrise = 6 * 60 + 30; // Fallback
+        let sunset = 18 * 60 + 30; // Fallback
+
+        if (weatherData.sunrise && weatherData.sunset) {
+             const sR = parseTimeToMinutes(weatherData.sunrise);
+             const sS = parseTimeToMinutes(weatherData.sunset);
+             if (sR !== null && sS !== null) {
+                 sunrise = sR;
+                 sunset = sS;
+             }
+        }
         
         // Step 2: Get clothing suggestions from Gemini
         log.info('Generating clothing suggestions');
