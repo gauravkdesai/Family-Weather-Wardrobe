@@ -108,10 +108,6 @@ const getWeatherData = async (prompt: string): Promise<any> => {
             const response = await model.generateContent({
                 contents: asUserContent(prompt),
                 tools: [{ googleSearch: {} }] as any,
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema: weatherSchema as any,
-                },
             });
 
             rawText = extractText(response);
@@ -222,10 +218,6 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
             const response = await model.generateContent({
                 contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.`),
                 tools: [{ googleSearch: {} }] as any,
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema: sunriseSunsetSchema as any,
-                },
             });
 
             rawText = extractText(response);
