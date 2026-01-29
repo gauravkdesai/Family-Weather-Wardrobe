@@ -216,7 +216,7 @@ const getSunriseSunset = async (location: string): Promise<{ sunrise: number, su
         try {
             const model = ai.getGenerativeModel({ model: requireModel() });
             const response = await model.generateContent({
-                contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format.`),
+                contents: asUserContent(`Using Google Search, provide sunrise and sunset times for ${location} today in 24-hour HH:MM format. Return a valid JSON object with keys "sunrise" and "sunset".`),
                 tools: [{ googleSearch: {} }] as any,
             });
 
