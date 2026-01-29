@@ -108,6 +108,10 @@ const getWeatherData = async (prompt: string): Promise<any> => {
             const response = await model.generateContent({
                 contents: asUserContent(prompt),
                 tools: [{ googleSearch: {} }] as any,
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: weatherSchema as any,
+                },
             });
 
             rawText = extractText(response);
