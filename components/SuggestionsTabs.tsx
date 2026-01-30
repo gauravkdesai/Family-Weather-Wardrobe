@@ -75,6 +75,7 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 dark:border-slate-700 overflow-x-auto no-scrollbar">
         {suggestions.map((suggestion, index) => {
+          if (!suggestion || !suggestion.member) return null;
           const memberData = family.find(f => f.name === suggestion.member);
           const isPinned = memberData?.pinned ?? false;
 
