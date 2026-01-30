@@ -159,7 +159,12 @@ const getClothingSuggestions = async (prompt: string): Promise<any[]> => {
             if (!Array.isArray(parsed)) {
                 throw new Error('Expected array of suggestions');
             }
-            return parsed;
+            // Validate structure
+            const valid = parsed.filter((item: any) => item && item.member && Array.isArray(item.outfit));
+            if (valid.length === 0 && parsed.length > 0) {
+                 log.error('Received suggestions with invalid structure', { parsed });
+            }
+            return valid;
         } catch (err) {
             lastErr = err instanceof Error ? err : new Error(String(err));
             log.error('getClothingSuggestions attempt failed', { attempt, error: lastErr.message });
