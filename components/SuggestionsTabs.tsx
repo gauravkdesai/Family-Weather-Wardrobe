@@ -14,18 +14,6 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
   const minSwipeDistance = 50;
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  useEffect(() => {
-    const activeTab = tabRefs.current[activeIndex];
-    if (activeTab) {
-      activeTab.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'center',
-      });
-    }
-  }, [activeIndex]);
 
   if (!suggestions || suggestions.length === 0) {
     return <div className="p-6 text-center text-slate-500">No suggestions available.</div>;
@@ -82,10 +70,6 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
           return (
             <button
               key={suggestion.member}
-              // FIX: The ref callback function should not return a value. 
-              // An arrow function with a body in parentheses `() => (expression)` returns the expression.
-              // We wrap the assignment in curly braces `{}` to make it a statement, so the function implicitly returns undefined.
-              ref={el => { tabRefs.current[index] = el; }}
               onClick={() => setActiveIndex(index)}
               className={`flex-shrink-0 flex items-center justify-center gap-2 py-3 px-4 text-center text-sm font-semibold transition-colors focus:outline-none ${
                 activeIndex === index
