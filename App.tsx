@@ -192,6 +192,16 @@ const App: React.FC = () => {
   }
 
   useEffect(() => {
+    // Auto-switch temp unit based on region unless manually set
+    if (data?.weather?.location && !manualTempUnit) {
+        const inferred = inferRegionUnit(data.weather.location);
+        if (inferred !== tempUnit) {
+            setTempUnit(inferred);
+        }
+    }
+  }, [data?.weather?.location, manualTempUnit, tempUnit]);
+
+  useEffect(() => {
     if (data && !dailyLoadingMessage) {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -245,11 +255,6 @@ const App: React.FC = () => {
                 suggestions: []
             });
             setDailyLoadingMessage(null); // Stop global loading to show UI
-
-            // Auto-switch temp unit
-            if (weatherResp.weather.location && !manualTempUnit) {
-                setTempUnit(inferRegionUnit(weatherResp.weather.location));
-            }
 
             // 2. Fetch Clothing for each member in parallel
             const rawWeather = weatherResp.weather.raw;
@@ -364,10 +369,6 @@ const App: React.FC = () => {
           suggestions: []
       });
       setTravelLoadingMessage(null); // Show UI
-
-      if (weatherResp.weather.location && !manualTempUnit) {
-          setTempUnit(inferRegionUnit(weatherResp.weather.location));
-      }
 
       // 2. Fetch Clothing for each member
       const rawWeather = weatherResp.weather.raw;
