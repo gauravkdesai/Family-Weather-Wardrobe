@@ -191,6 +191,8 @@ const App: React.FC = () => {
     return 'C';
   }
 
+  /* Effect removed to prevent render cycle issues during progressive loading */
+  /* 
   useEffect(() => {
     // Auto-switch temp unit based on region unless manually set
     if (data?.weather?.location && !manualTempUnit) {
@@ -200,6 +202,7 @@ const App: React.FC = () => {
         }
     }
   }, [data?.weather?.location, manualTempUnit, tempUnit]);
+  */
 
   useEffect(() => {
     if (data && !dailyLoadingMessage) {
