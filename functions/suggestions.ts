@@ -330,7 +330,7 @@ export const suggestions: HttpFunction = async (req, res) => {
 
     try {
         const body = req.body;
-        const { requestType } = body;
+        const { requestType, mode = 'full', weatherData: providedWeatherData } = body;
 
         let weatherPrompt: string;
         let clothingPrompt: string;
@@ -374,23 +374,64 @@ export const suggestions: HttpFunction = async (req, res) => {
             return;
         }
 
-        // Step 1: Get weather data from Google Search (now includes sunrise/sunset)
-        log.info('Fetching weather data with Google Search');
-        const weatherData = await getWeatherData(weatherPrompt);
+        let weatherData = providedWeatherData;
 
-        // Step 1b: Use sunrise/sunset from weather data or fallback
-        let sunrise = 6 * 60 + 30; // Fallback
-        let sunset = 18 * 60 + 30; // Fallback
-
-        if (weatherData.sunrise && weatherData.sunset) {
-             const sR = parseTimeToMinutes(weatherData.sunrise);
-             const sS = parseTimeToMinutes(weatherData.sunset);
-             if (sR !== null && sS !== null) {
-                 sunrise = sR;
-                 sunset = sS;
-             }
+        // Step 1: Get weather data (if not provided or mode is weather-only/full)
+        if (!weatherData && (mode === 'full' || mode === 'weather-only')) {
+            log.info('Fetching weather data with Google Search');
+            weatherData = await getWeatherData(weatherPrompt);
         }
-        
+
+        // If mode is 'weather-only', return early
+        if (mode === 'weather-only') {
+             // Construct dayParts for the frontend to render immediately
+            let sunrise = 6 * 60 + 30; // Fallback
+            let sunset = 18 * 60 + 30; // Fallback
+
+            if (weatherData.sunrise && weatherData.sunset) {
+                const sR = parseTimeToMinutes(weatherData.sunrise);
+                const sS = parseTimeToMinutes(weatherData.sunset);
+                if (sR !== null && sS !== null) {
+                    sunrise = sR;
+                    sunset = sS;
+                }
+            }
+
+            const isNightAtTime = (time: string) => {
+                const minutes = parseTimeToMinutes(time);
+                if (minutes === null) return false;
+                return minutes >= sunset || minutes < sunrise;
+            };
+
+            const dayParts = [
+                { period: 'Morning', time: '07:00', temp: weatherData.temp07, condition: weatherData.condition07, isNight: isNightAtTime('07:00') },
+                { period: 'Afternoon', time: '12:00', temp: weatherData.temp12, condition: weatherData.condition12, isNight: isNightAtTime('12:00') },
+                { period: 'Evening', time: '17:00', temp: weatherData.temp17, condition: weatherData.condition17, isNight: isNightAtTime('17:00') },
+                { period: 'Night', time: '22:00', temp: weatherData.temp22, condition: weatherData.condition22, isNight: isNightAtTime('22:00') }
+            ].map(part => ({
+                ...part,
+                conditionIcon: mapConditionToIcon(part.condition, part.isNight),
+            }));
+
+            res.status(200).json({
+                weather: {
+                    location: weatherData.location,
+                    highTemp: weatherData.highTemp,
+                    lowTemp: weatherData.lowTemp,
+                    dayParts,
+                    ...(weatherData.dateRange && { dateRange: weatherData.dateRange }),
+                    // Pass raw data back so client can send it in next request
+                    raw: weatherData 
+                }
+            });
+            return;
+        }
+
+        if (!weatherData) {
+             res.status(400).json({ error: 'Weather data is required for clothing-only mode.' });
+             return;
+        }
+
         // Step 2: Get clothing suggestions from Gemini
         log.info('Generating clothing suggestions');
         if (requestType === 'travel') {
@@ -400,43 +441,43 @@ export const suggestions: HttpFunction = async (req, res) => {
         }
         const suggestions = await getClothingSuggestions(clothingPrompt);
         
-        // Step 3: Construct response with FIXED times
+        // Return full response (either 'full' mode or 'clothing-only' result)
+        // If 'clothing-only', we don't strictly need to re-send weather, but keeping structure is safe.
+        // Or we can just send suggestions.
+        
+        // For clothing-only, we usually just want the array. 
+        // But to keep TypeScript types happy and simpler frontend, let's return the standard structure 
+        // even if weather part is reconstructed or omitted (if client handles partials).
+        // Actually, for 'clothing-only', let's return the suggestions list + the weather object as context.
+        
+        // Re-construct dayParts if needed (redundant if client has it, but safe)
+        // ... (omitted for brevity, assume 'full' flow logic applies)
+        
+        // Let's stick to the existing full logic for the final response construction to minimize breakage
+        // But we need sunrise/sunset variables which might be missing if we used providedWeatherData
+        
+        let sunrise = 6 * 60 + 30; 
+        let sunset = 18 * 60 + 30;
+        if (weatherData.sunrise && weatherData.sunset) {
+             const sR = parseTimeToMinutes(weatherData.sunrise);
+             const sS = parseTimeToMinutes(weatherData.sunset);
+             if (sR !== null && sS !== null) {
+                 sunrise = sR;
+                 sunset = sS;
+             }
+        }
+        
         const isNightAtTime = (time: string) => {
             const minutes = parseTimeToMinutes(time);
             if (minutes === null) return false;
-            // Night if after sunset or before sunrise
             return minutes >= sunset || minutes < sunrise;
         };
 
         const dayParts = [
-            {
-                period: 'Morning',
-                time: '07:00',
-                temp: weatherData.temp07,
-                condition: weatherData.condition07,
-                isNight: isNightAtTime('07:00'),
-            },
-            {
-                period: 'Afternoon',
-                time: '12:00',
-                temp: weatherData.temp12,
-                condition: weatherData.condition12,
-                isNight: isNightAtTime('12:00'),
-            },
-            {
-                period: 'Evening',
-                time: '17:00',
-                temp: weatherData.temp17,
-                condition: weatherData.condition17,
-                isNight: isNightAtTime('17:00'),
-            },
-            {
-                period: 'Night',
-                time: '22:00',
-                temp: weatherData.temp22,
-                condition: weatherData.condition22,
-                isNight: isNightAtTime('22:00'),
-            }
+            { period: 'Morning', time: '07:00', temp: weatherData.temp07, condition: weatherData.condition07, isNight: isNightAtTime('07:00') },
+            { period: 'Afternoon', time: '12:00', temp: weatherData.temp12, condition: weatherData.condition12, isNight: isNightAtTime('12:00') },
+            { period: 'Evening', time: '17:00', temp: weatherData.temp17, condition: weatherData.condition17, isNight: isNightAtTime('17:00') },
+            { period: 'Night', time: '22:00', temp: weatherData.temp22, condition: weatherData.condition22, isNight: isNightAtTime('22:00') }
         ].map(part => ({
             ...part,
             conditionIcon: mapConditionToIcon(part.condition, part.isNight),
@@ -448,7 +489,8 @@ export const suggestions: HttpFunction = async (req, res) => {
                 highTemp: weatherData.highTemp,
                 lowTemp: weatherData.lowTemp,
                 dayParts,
-                ...(weatherData.dateRange && { dateRange: weatherData.dateRange })
+                ...(weatherData.dateRange && { dateRange: weatherData.dateRange }),
+                raw: weatherData
             },
             suggestions
         };

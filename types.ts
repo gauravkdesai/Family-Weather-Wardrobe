@@ -13,6 +13,7 @@ export interface WeatherData {
   lowTemp: number;
   dayParts: DayPartForecast[];
   dateRange?: string;
+  raw?: any;
 }
 
 export interface ClothingSuggestion {

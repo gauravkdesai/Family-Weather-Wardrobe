@@ -67,7 +67,7 @@ const callApi = async (body: object): Promise<GeminiResponse> => {
     return response.json();
 }
 
-export const getWeatherAndClothingSuggestions = async (lat: number, lon: number, family: string[], day: 'today' | 'tomorrow', schedule?: string): Promise<GeminiResponse> => {
+export const getWeatherAndClothingSuggestions = async (lat: number, lon: number, family: string[], day: 'today' | 'tomorrow', schedule?: string, mode: 'full' | 'weather-only' | 'clothing-only' = 'full', weatherData?: any): Promise<GeminiResponse> => {
     return callApi({
         requestType: 'geolocation',
         lat,
@@ -75,23 +75,29 @@ export const getWeatherAndClothingSuggestions = async (lat: number, lon: number,
         family,
         day,
         schedule,
+        mode,
+        weatherData
     });
 };
 
-export const getWeatherAndClothingSuggestionsForLocation = async (location: string, family: string[], day: 'today' | 'tomorrow', schedule?: string): Promise<GeminiResponse> => {
+export const getWeatherAndClothingSuggestionsForLocation = async (location: string, family: string[], day: 'today' | 'tomorrow', schedule?: string, mode: 'full' | 'weather-only' | 'clothing-only' = 'full', weatherData?: any): Promise<GeminiResponse> => {
     return callApi({
         requestType: 'location',
         location,
         family,
         day,
         schedule,
+        mode,
+        weatherData
     });
 };
 
-export const getTravelClothingSuggestions = async (destinationAndDuration: string, family: string[]): Promise<GeminiResponse> => {
+export const getTravelClothingSuggestions = async (destinationAndDuration: string, family: string[], mode: 'full' | 'weather-only' | 'clothing-only' = 'full', weatherData?: any): Promise<GeminiResponse> => {
     return callApi({
         requestType: 'travel',
         destinationAndDuration,
         family,
+        mode,
+        weatherData
     });
 }
