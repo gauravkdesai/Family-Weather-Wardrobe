@@ -236,76 +236,46 @@ const App: React.FC = () => {
 
     const familyNames = family.map(f => f.name);
 
-    setDailyLoadingMessage(`Fetching ${day}'s forecast...`);
+    const messages = [
+        `Fetching ${day}'s forecast...`,
+        "Analyzing local weather patterns...",
+        "Considering your daily schedule...",
+        ...familyNames.map(name => `Tailoring suggestions for ${name}...`),
+        "Finalizing recommendations..."
+    ];
+    
+    let messageIndex = 0;
+    setDailyLoadingMessage(messages[messageIndex]);
+    messageIndex++;
 
-    const performProgressiveFetch = async (lat?: number, lon?: number, loc?: string) => {
-        try {
-            // 1. Fetch Weather Only
-            let weatherResp: GeminiResponse;
-            if (lat && lon) {
-                weatherResp = await getWeatherAndClothingSuggestions(lat, lon, [], day, dailyScheduleInput, 'weather-only');
-            } else if (loc) {
-                weatherResp = await getWeatherAndClothingSuggestionsForLocation(loc, [], day, dailyScheduleInput, 'weather-only');
-            } else {
-                throw new Error("Missing location data");
-            }
-
-            if (!weatherResp.weather) throw new Error("No weather data received");
-
-            // Display weather immediately
-            setData({
-                weather: weatherResp.weather,
-                suggestions: []
-            });
-            setDailyLoadingMessage(null); // Stop global loading to show UI
-
-            // 2. Fetch Clothing for each member in parallel
-            const rawWeather = weatherResp.weather.raw;
-            
-            familyNames.forEach(async (memberName) => {
-                try {
-                    let clothingResp: GeminiResponse;
-                    if (lat && lon) {
-                        clothingResp = await getWeatherAndClothingSuggestions(lat, lon, [memberName], day, dailyScheduleInput, 'clothing-only', rawWeather);
-                    } else {
-                        clothingResp = await getWeatherAndClothingSuggestionsForLocation(loc!, [memberName], day, dailyScheduleInput, 'clothing-only', rawWeather);
-                    }
-
-                    if (clothingResp.suggestions && clothingResp.suggestions.length > 0) {
-                        const validNew = clothingResp.suggestions.filter(s => s && s.member && Array.isArray(s.outfit));
-                        if (validNew.length > 0) {
-                            setData(prevData => {
-                                if (!prevData) return prevData;
-                                const newSuggestions = [...(prevData.suggestions || []), ...validNew];
-                                // Sort based on original family order
-                                newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-                                return {
-                                    ...prevData,
-                                    suggestions: newSuggestions
-                                };
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Failed to fetch for ${memberName}`, e);
-                }
-            });
-
-        } catch (err) {
-            setError(friendlyError(err));
-            setDailyLoadingMessage(null);
-        } finally {
-            if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-        }
-    };
+    loadingIntervalRef.current = window.setInterval(() => {
+        setDailyLoadingMessage(messages[messageIndex]);
+        messageIndex = (messageIndex + 1) % messages.length;
+    }, 2500);
 
     const performManualSearch = async () => {
       if (!manualLocationInput.trim()) {
         setError("Please enter a location to get suggestions.");
+        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
         setDailyLoadingMessage(null);
         return;
       }
-      await performProgressiveFetch(undefined, undefined, manualLocationInput);
+      try {
+        const result = await getWeatherAndClothingSuggestionsForLocation(manualLocationInput, familyNames, day, dailyScheduleInput);
+        if (result?.suggestions) {
+          result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+        }
+        setData(result);
+        // Auto-switch temp unit based on region unless manually set
+        if (result?.weather?.location && !manualTempUnit) {
+          setTempUnit(inferRegionUnit(result.weather.location));
+        }
+      } catch (err) {
+        setError(friendlyError(err));
+      } finally {
+        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+        setDailyLoadingMessage(null);
+      }
     };
     
     if (showManualLocation) {
@@ -316,6 +286,7 @@ const App: React.FC = () => {
     if (!navigator.geolocation) {
       setError("Geolocation is not supported by your browser. Please enter your location manually.");
       setShowManualLocation(true);
+      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setDailyLoadingMessage(null);
       return;
     }
@@ -324,16 +295,32 @@ const App: React.FC = () => {
     if (!skipPrompt && !showManualLocation) {
       pendingRequestDayRef.current = day;
       setShowLocationExplanation(true);
+      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setDailyLoadingMessage(null);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
+        try {
           const { latitude, longitude } = position.coords;
+          const result = await getWeatherAndClothingSuggestions(latitude, longitude, familyNames, day, dailyScheduleInput);
+          if (result?.suggestions) {
+            result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+          }
+          setData(result);
           setShowManualLocation(false); 
           setManualLocationInput('');
-          await performProgressiveFetch(latitude, longitude);
+          // Auto-switch temp unit based on region unless manually set
+          if (result?.weather?.location && !manualTempUnit) {
+            setTempUnit(inferRegionUnit(result.weather.location));
+          }
+        } catch (err) {
+          setError(friendlyError(err));
+        } finally {
+          if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+          setDailyLoadingMessage(null);
+        }
       },
       (geoError) => {
         let message = "Could not retrieve your location. Please enter it manually below.";
@@ -342,6 +329,7 @@ const App: React.FC = () => {
         }
         setError(message);
         setShowManualLocation(true);
+        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
         setDailyLoadingMessage(null);
       }
     );
@@ -359,50 +347,39 @@ const App: React.FC = () => {
     setTravelData(null);
     
     const familyNames = family.map(f => f.name);
-    setTravelLoadingMessage(`Generating packing list for ${travelInput}...`);
 
+    const messages = [
+        `Generating packing list for ${travelInput}...`,
+        "Researching typical weather conditions...",
+        ...familyNames.map(name => `Creating packing list for ${name}...`),
+        "Adding travel essentials...",
+        "Finalizing your packing list..."
+    ];
+    
+    let messageIndex = 0;
+    setTravelLoadingMessage(messages[messageIndex]);
+    messageIndex++;
+
+    loadingIntervalRef.current = window.setInterval(() => {
+        setTravelLoadingMessage(messages[messageIndex]);
+        messageIndex = (messageIndex + 1) % messages.length;
+    }, 2500);
+    
     try {
-      // 1. Fetch Weather Only
-      const weatherResp = await getTravelClothingSuggestions(travelInput, [], 'weather-only');
-      
-      if (!weatherResp.weather) throw new Error("No weather data received");
-
-      setTravelData({
-          weather: weatherResp.weather,
-          suggestions: []
-      });
-      setTravelLoadingMessage(null); // Show UI
-
-      // 2. Fetch Clothing for each member
-      const rawWeather = weatherResp.weather.raw;
-      familyNames.forEach(async (memberName) => {
-          try {
-              const clothingResp = await getTravelClothingSuggestions(travelInput, [memberName], 'clothing-only', rawWeather);
-              
-              if (clothingResp.suggestions && clothingResp.suggestions.length > 0) {
-                  const validNew = clothingResp.suggestions.filter(s => s && s.member && Array.isArray(s.outfit));
-                  if (validNew.length > 0) {
-                      setTravelData(prevData => {
-                          if (!prevData) return prevData;
-                          const newSuggestions = [...(prevData.suggestions || []), ...validNew];
-                          newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-                          return {
-                              ...prevData,
-                              suggestions: newSuggestions
-                          };
-                      });
-                  }
-              }
-          } catch (e) {
-              console.error(`Failed to fetch for ${memberName}`, e);
-          }
-      });
-
+      const result = await getTravelClothingSuggestions(travelInput, familyNames);
+      if (result?.suggestions) {
+        result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+      }
+      setTravelData(result);
+      // Auto-switch temp unit based on region unless manually set
+      if (result?.weather?.location && !manualTempUnit) {
+        setTempUnit(inferRegionUnit(result.weather.location));
+      }
     } catch (err) {
       setTravelError(friendlyError(err));
-      setTravelLoadingMessage(null);
     } finally {
       if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+      setTravelLoadingMessage(null);
     }
   }, [travelInput, family]);
 
