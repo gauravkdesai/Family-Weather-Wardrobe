@@ -264,16 +264,19 @@ const App: React.FC = () => {
                     }
 
                     if (clothingResp.suggestions && clothingResp.suggestions.length > 0) {
-                        setData(prevData => {
-                            if (!prevData) return prevData;
-                            const newSuggestions = [...(prevData.suggestions || []), ...clothingResp.suggestions!];
-                            // Sort based on original family order
-                            newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-                            return {
-                                ...prevData,
-                                suggestions: newSuggestions
-                            };
-                        });
+                        const validNew = clothingResp.suggestions.filter(s => s && s.member && Array.isArray(s.outfit));
+                        if (validNew.length > 0) {
+                            setData(prevData => {
+                                if (!prevData) return prevData;
+                                const newSuggestions = [...(prevData.suggestions || []), ...validNew];
+                                // Sort based on original family order
+                                newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+                                return {
+                                    ...prevData,
+                                    suggestions: newSuggestions
+                                };
+                            });
+                        }
                     }
                 } catch (e) {
                     console.error(`Failed to fetch for ${memberName}`, e);
@@ -373,15 +376,18 @@ const App: React.FC = () => {
               const clothingResp = await getTravelClothingSuggestions(travelInput, [memberName], 'clothing-only', rawWeather);
               
               if (clothingResp.suggestions && clothingResp.suggestions.length > 0) {
-                  setTravelData(prevData => {
-                      if (!prevData) return prevData;
-                      const newSuggestions = [...(prevData.suggestions || []), ...clothingResp.suggestions!];
-                      newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-                      return {
-                          ...prevData,
-                          suggestions: newSuggestions
-                      };
-                  });
+                  const validNew = clothingResp.suggestions.filter(s => s && s.member && Array.isArray(s.outfit));
+                  if (validNew.length > 0) {
+                      setTravelData(prevData => {
+                          if (!prevData) return prevData;
+                          const newSuggestions = [...(prevData.suggestions || []), ...validNew];
+                          newSuggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+                          return {
+                              ...prevData,
+                              suggestions: newSuggestions
+                          };
+                      });
+                  }
               }
           } catch (e) {
               console.error(`Failed to fetch for ${memberName}`, e);

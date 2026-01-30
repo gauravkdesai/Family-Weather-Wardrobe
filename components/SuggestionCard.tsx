@@ -6,6 +6,10 @@ interface SuggestionCardProps {
 }
 
 const SuggestionCard: React.FC<SuggestionCardProps> = ({ suggestion }) => {
+  if (!suggestion || !Array.isArray(suggestion.outfit)) {
+    return <p className="text-red-500">Invalid suggestion data.</p>;
+  }
+
   // Regex to find and capture text in parentheses
   const detailRegex = /\(([^)]+)\)/;
 
