@@ -9,9 +9,10 @@ import Spinner from './components/Spinner';
 import FamilyConfigModal from './components/FamilyConfigModal';
 import { UserGroupIcon, CogIcon, CalendarIcon, LocationMarkerIcon, SunnyIcon, CloudyIcon, RainIcon, SnowIcon, WindyIcon, PartlyCloudyIcon } from './components/icons';
 import SuggestionsTabs from './components/SuggestionsTabs';
-// FIX: Import the WeatherDisplay component.
 import WeatherDisplay from './components/WeatherDisplay';
 import TempUnitToggle from './components/TempUnitToggle';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { useGeolocation } from './hooks/useGeolocation';
 
 const FAMILY_STORAGE_key = 'familyWeatherWardrobeFamily';
 const TRAVEL_CALENDAR_STORAGE_key = 'familyWeatherWardrobeTravelCalendarConnected';
@@ -23,7 +24,6 @@ const DEFAULT_FAMILY_STATE = [
   { name: 'Baby (0-1)', pinned: false },
 ];
 
-// FIX: Define the missing ErrorMessage component.
 const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative w-full max-w-4xl" role="alert">
     <strong className="font-bold">Error: </strong>
@@ -46,7 +46,6 @@ const friendlyError = (err: unknown): string => {
   return raw;
 };
 
-// FIX: Define the missing ResultsBlock component.
 interface ResultsBlockProps {
   title: string;
   data: GeminiResponse;
@@ -105,104 +104,58 @@ const App: React.FC = () => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [showLocationExplanation, setShowLocationExplanation] = useState(false);
   const pendingRequestDayRef = useRef<'today' | 'tomorrow' | null>(null);
-  const [family, setFamily] = useState<FamilyMember[]>(() => {
-    try {
-      const storedFamily = localStorage.getItem(FAMILY_STORAGE_key);
-      if (storedFamily) {
-          let familyData: FamilyMember[];
-          const parsed = JSON.parse(storedFamily);
-          // Gracefully migrate old string[] format to new FamilyMember[] format
-          if (Array.isArray(parsed) && (parsed.length === 0 || typeof parsed[0] === 'string')) {
-              familyData = parsed.map((name: string) => ({ 
-                  name, 
-                  // Pin the new default member for a smooth transition for existing users
-                  pinned: ['Adult'].includes(name) 
-              }));
-          } else {
-              familyData = parsed;
-          }
-          // Sort on load to ensure pinned items are always first
-          familyData.sort((a, b) => Number(b.pinned) - Number(a.pinned));
-          return familyData;
-      }
-    } catch (e) {
-      console.error("Failed to parse family data from localStorage", e);
-    }
-    // New default state, pre-sorted and gender-neutral
-    return DEFAULT_FAMILY_STATE;
-  });
-  // Region-based temp unit: auto-switch to 'F' for US, 'C' elsewhere, but allow manual override
-  const [tempUnit, setTempUnit] = useState<'C' | 'F'>(() => {
-    const storedUnit = localStorage.getItem(TEMP_UNIT_STORAGE_KEY);
-    return (storedUnit === 'C' || storedUnit === 'F') ? storedUnit : 'C';
-  });
-  // Track if user manually toggled unit
+
+  const [family, setFamily, resetFamily] = useLocalStorage<FamilyMember[]>(FAMILY_STORAGE_key, DEFAULT_FAMILY_STATE);
+  const [tempUnit, setTempUnit, resetTempUnit] = useLocalStorage<'C' | 'F'>(TEMP_UNIT_STORAGE_KEY, 'C');
+  const [isTravelCalendarConnected, setTravelCalendarConnected, resetTravelCalendar] = useLocalStorage<boolean>(TRAVEL_CALENDAR_STORAGE_key, false);
+
+  // Track if user manually toggled unit (this is session-based, doesn't need persistence across reloads if not desired, or could use another key)
+  // For simplicity, keeping it in component state as it's a temporary override flag logic.
   const [manualTempUnit, setManualTempUnit] = useState<boolean>(false);
   
   const resultsRef = useRef<HTMLDivElement>(null);
   const travelResultsRef = useRef<HTMLDivElement>(null);
   const loadingIntervalRef = useRef<number | null>(null);
 
-  const [isTravelCalendarConnected, setTravelCalendarConnected] = useState<boolean>(() => {
-     return localStorage.getItem(TRAVEL_CALENDAR_STORAGE_key) === 'true';
-  });
+  const { coordinates, error: geoError, getCurrentPosition, resetLocationError } = useGeolocation();
 
-  // Clear local preferences without reloading: remove localStorage keys and reset in-memory state
+  // Clear local preferences
   const clearLocalPreferences = useCallback(() => {
-    try {
-      localStorage.removeItem(FAMILY_STORAGE_key);
-      localStorage.removeItem(TEMP_UNIT_STORAGE_KEY);
-      localStorage.removeItem(TRAVEL_CALENDAR_STORAGE_key);
-    } catch (e) {
-      console.error('Failed to remove local preferences', e);
-    }
-
-    // Reset in-memory state to defaults
-    setFamily(DEFAULT_FAMILY_STATE);
-    setTempUnit('C');
+    resetFamily();
+    resetTempUnit();
+    resetTravelCalendar();
     setManualTempUnit(false);
-    setTravelCalendarConnected(false);
-  }, [setFamily, setTempUnit, setManualTempUnit, setTravelCalendarConnected]);
+  }, [resetFamily, resetTempUnit, resetTravelCalendar]);
 
 
+  // Effect to handle migration/validation of family data if needed could go here
+  // But useLocalStorage handles basic JSON parsing.
+  // The complex migration logic from original App.tsx (string[] -> FamilyMember[]) is hard to put inside generic useLocalStorage.
+  // We can add a one-time check here if we want to be robust, or assume data is clean after initial load.
+  // For safety, let's keep the sorting logic in a useEffect or useMemo if needed, but the original logic
+  // did it on load. Since useLocalStorage initializes once, we might want to validate 'family' structure.
   useEffect(() => {
-    localStorage.setItem(FAMILY_STORAGE_key, JSON.stringify(family));
-  }, [family]);
+     if (Array.isArray(family) && family.length > 0 && typeof family[0] === 'string') {
+        // Migration detected
+         const migrated = (family as any as string[]).map((name: string) => ({ 
+             name, 
+             pinned: ['Adult'].includes(name) 
+         }));
+         migrated.sort((a, b) => Number(b.pinned) - Number(a.pinned));
+         setFamily(migrated);
+     }
+  }, [family, setFamily]);
 
-  useEffect(() => {
-    localStorage.setItem(TRAVEL_CALENDAR_STORAGE_key, String(isTravelCalendarConnected));
-  }, [isTravelCalendarConnected]);
 
-  useEffect(() => {
-    localStorage.setItem(TEMP_UNIT_STORAGE_KEY, tempUnit);
-  }, [tempUnit]);
-
-  // Helper: infer region from location string (simple country/US zip detection)
+  // Helper: infer region from location string
   function inferRegionUnit(location: string): 'C' | 'F' {
-    // US, Bahamas, Belize, Cayman, Palau, etc. use °F
-    // For now, only auto-switch for US (zip or "United States"/"USA")
     if (!location) return 'C';
     const usZip = /^\d{5}(-\d{4})?$/;
     const usNames = ["united states", "usa", "us", "puerto rico", "guam", "american samoa", "virgin islands", "northern mariana islands"];
     const locLower = location.toLowerCase();
     if (usZip.test(location.trim()) || usNames.some(n => locLower.includes(n))) return 'F';
-    // Canada: mostly °C, but some border regions use °F; for simplicity, default to °C
-    // Add more regions as needed
     return 'C';
   }
-
-  /* Effect removed to prevent render cycle issues during progressive loading */
-  /* 
-  useEffect(() => {
-    // Auto-switch temp unit based on region unless manually set
-    if (data?.weather?.location && !manualTempUnit) {
-        const inferred = inferRegionUnit(data.weather.location);
-        if (inferred !== tempUnit) {
-            setTempUnit(inferred);
-        }
-    }
-  }, [data?.weather?.location, manualTempUnit, tempUnit]);
-  */
 
   useEffect(() => {
     if (data && !dailyLoadingMessage) {
@@ -221,21 +174,59 @@ const App: React.FC = () => {
         const updatedFamily = currentFamily.map(member =>
             member.name === memberName ? { ...member, pinned: !member.pinned } : member
         );
-        // Re-sort by pinned status
         updatedFamily.sort((a, b) => Number(b.pinned) - Number(a.pinned));
         return updatedFamily;
     });
-  }, []);
+  }, [setFamily]);
 
-  const handleGetSuggestions = useCallback((day: 'today' | 'tomorrow', opts?: { skipPermissionPrompt?: boolean }) => {
-    if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-    
-    setError(null);
-    setData(null);
-    setLastRequestType(day);
+  // Main logic for fetching suggestions
+  const fetchSuggestions = useCallback(async (day: 'today' | 'tomorrow', lat?: number, lon?: number, locationText?: string) => {
+      const familyNames = family.map(f => f.name);
+      try {
+        let result;
+        if (lat !== undefined && lon !== undefined) {
+             result = await getWeatherAndClothingSuggestions(lat, lon, familyNames, day, dailyScheduleInput);
+        } else if (locationText) {
+             result = await getWeatherAndClothingSuggestionsForLocation(locationText, familyNames, day, dailyScheduleInput);
+        } else {
+            throw new Error("No location provided");
+        }
 
+        if (result?.suggestions) {
+            result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
+        }
+        setData(result);
+        if (result?.weather?.location && !manualTempUnit) {
+            setTempUnit(inferRegionUnit(result.weather.location));
+        }
+      } catch (err) {
+          setError(friendlyError(err));
+      } finally {
+          if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+          setDailyLoadingMessage(null);
+      }
+  }, [family, dailyScheduleInput, manualTempUnit, setTempUnit]);
+
+  // Handle Geolocation Updates
+  useEffect(() => {
+      if (coordinates && pendingRequestDayRef.current) {
+          const day = pendingRequestDayRef.current;
+          pendingRequestDayRef.current = null; // Clear pending
+          setShowManualLocation(false);
+          setManualLocationInput('');
+          fetchSuggestions(day, coordinates.latitude, coordinates.longitude);
+      }
+      if (geoError && pendingRequestDayRef.current) {
+           pendingRequestDayRef.current = null;
+           setError(geoError);
+           setShowManualLocation(true);
+           if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+           setDailyLoadingMessage(null);
+      }
+  }, [coordinates, geoError, fetchSuggestions]);
+
+  const startLoadingAnimation = useCallback((day: 'today' | 'tomorrow') => {
     const familyNames = family.map(f => f.name);
-
     const messages = [
         `Fetching ${day}'s forecast...`,
         "Analyzing local weather patterns...",
@@ -243,7 +234,6 @@ const App: React.FC = () => {
         ...familyNames.map(name => `Tailoring suggestions for ${name}...`),
         "Finalizing recommendations..."
     ];
-    
     let messageIndex = 0;
     setDailyLoadingMessage(messages[messageIndex]);
     messageIndex++;
@@ -252,88 +242,51 @@ const App: React.FC = () => {
         setDailyLoadingMessage(messages[messageIndex]);
         messageIndex = (messageIndex + 1) % messages.length;
     }, 2500);
+  }, [family]);
 
-    const performManualSearch = async () => {
-      if (!manualLocationInput.trim()) {
+  const handleGetSuggestions = useCallback((day: 'today' | 'tomorrow', opts?: { skipPermissionPrompt?: boolean }) => {
+    if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
+    setError(null);
+    setData(null);
+    setLastRequestType(day);
+    resetLocationError();
+
+    startLoadingAnimation(day);
+
+    if (showManualLocation && manualLocationInput.trim()) {
+        fetchSuggestions(day, undefined, undefined, manualLocationInput);
+        return;
+    }
+
+    if (showManualLocation && !manualLocationInput.trim()) {
         setError("Please enter a location to get suggestions.");
         if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
         setDailyLoadingMessage(null);
         return;
-      }
-      try {
-        const result = await getWeatherAndClothingSuggestionsForLocation(manualLocationInput, familyNames, day, dailyScheduleInput);
-        if (result?.suggestions) {
-          result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-        }
-        setData(result);
-        // Auto-switch temp unit based on region unless manually set
-        if (result?.weather?.location && !manualTempUnit) {
-          setTempUnit(inferRegionUnit(result.weather.location));
-        }
-      } catch (err) {
-        setError(friendlyError(err));
-      } finally {
-        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-        setDailyLoadingMessage(null);
-      }
-    };
-    
-    if (showManualLocation) {
-        performManualSearch();
-        return;
     }
     
-    if (!navigator.geolocation) {
-      setError("Geolocation is not supported by your browser. Please enter your location manually.");
-      setShowManualLocation(true);
-      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-      setDailyLoadingMessage(null);
-      return;
-    }
-
+    // Check permissions flow
     const skipPrompt = opts?.skipPermissionPrompt === true;
     if (!skipPrompt && !showManualLocation) {
+        // Check if we already have coords? simpler to just ask again or rely on browser cache
+        // But for UX, let's show the explanation first if we haven't asked before or if we want to be polite
+        // The original logic showed explanation first.
       pendingRequestDayRef.current = day;
       setShowLocationExplanation(true);
       if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setDailyLoadingMessage(null);
       return;
     }
+    
+    // If we skip prompt (user clicked Allow), trigger geo
+    if (skipPrompt) {
+         pendingRequestDayRef.current = day; // Set pending again so effect catches it
+         startLoadingAnimation(day); // Restart animation that was stopped
+         getCurrentPosition();
+    }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          const result = await getWeatherAndClothingSuggestions(latitude, longitude, familyNames, day, dailyScheduleInput);
-          if (result?.suggestions) {
-            result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
-          }
-          setData(result);
-          setShowManualLocation(false); 
-          setManualLocationInput('');
-          // Auto-switch temp unit based on region unless manually set
-          if (result?.weather?.location && !manualTempUnit) {
-            setTempUnit(inferRegionUnit(result.weather.location));
-          }
-        } catch (err) {
-          setError(friendlyError(err));
-        } finally {
-          if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-          setDailyLoadingMessage(null);
-        }
-      },
-      (geoError) => {
-        let message = "Could not retrieve your location. Please enter it manually below.";
-        if (geoError.code === geoError.PERMISSION_DENIED) {
-            message = "Location access denied. Please enable it in your browser settings or enter your location manually below.";
-        }
-        setError(message);
-        setShowManualLocation(true);
-        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-        setDailyLoadingMessage(null);
-      }
-    );
-  }, [family, dailyScheduleInput, showManualLocation, manualLocationInput]);
+  }, [showManualLocation, manualLocationInput, startLoadingAnimation, fetchSuggestions, getCurrentPosition, resetLocationError]);
+
 
   const handleGetTravelSuggestions = useCallback(async () => {
     if (!travelInput.trim()) {
@@ -371,7 +324,6 @@ const App: React.FC = () => {
         result.suggestions.sort((a, b) => familyNames.indexOf(a.member) - familyNames.indexOf(b.member));
       }
       setTravelData(result);
-      // Auto-switch temp unit based on region unless manually set
       if (result?.weather?.location && !manualTempUnit) {
         setTempUnit(inferRegionUnit(result.weather.location));
       }
@@ -381,7 +333,7 @@ const App: React.FC = () => {
       if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
       setTravelLoadingMessage(null);
     }
-  }, [travelInput, family]);
+  }, [travelInput, family, manualTempUnit, setTempUnit]);
 
   const generateResultsTitle = (day: 'today' | 'tomorrow' | null): string => {
     if (!day) return '';
@@ -410,6 +362,7 @@ const App: React.FC = () => {
                 onClick={() => {
                   setShowLocationExplanation(false);
                   setShowManualLocation(true);
+                  // Ensure we clear pending request but keep the intent for manual
                   pendingRequestDayRef.current = null;
                 }}
                 className="px-4 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
@@ -420,7 +373,6 @@ const App: React.FC = () => {
                 onClick={() => {
                   const pending = pendingRequestDayRef.current ?? 'today';
                   setShowLocationExplanation(false);
-                  pendingRequestDayRef.current = null;
                   handleGetSuggestions(pending, { skipPermissionPrompt: true });
                 }}
                 className="px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
@@ -591,5 +543,4 @@ const App: React.FC = () => {
   );
 };
 
-// FIX: Add default export to make the component available for import in index.tsx.
 export default App;
