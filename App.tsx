@@ -1,13 +1,9 @@
-
-
-
-
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { getWeatherAndClothingSuggestions, getTravelClothingSuggestions, getWeatherAndClothingSuggestionsForLocation } from './services/geminiService';
-import { GeminiResponse, WeatherData, FamilyMember } from './types';
-import Spinner from './components/Spinner';
+import { GeminiResponse, FamilyMember } from './types';
+import SkeletonLoader from './components/SkeletonLoader';
 import FamilyConfigModal from './components/FamilyConfigModal';
-import { UserGroupIcon, CogIcon, CalendarIcon, LocationMarkerIcon, SunnyIcon, CloudyIcon, RainIcon, SnowIcon, WindyIcon, PartlyCloudyIcon } from './components/icons';
+import { UserGroupIcon, CogIcon, CalendarIcon } from './components/icons';
 import SuggestionsTabs from './components/SuggestionsTabs';
 import WeatherDisplay from './components/WeatherDisplay';
 import TempUnitToggle from './components/TempUnitToggle';
@@ -25,7 +21,7 @@ const DEFAULT_FAMILY_STATE = [
 ];
 
 const ErrorMessage: React.FC<{ message: string }> = ({ message }) => (
-  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative w-full max-w-4xl" role="alert">
+  <div className="bg-red-500/10 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl relative w-full max-w-4xl backdrop-blur-sm" role="alert">
     <strong className="font-bold">Error: </strong>
     <span className="block sm:inline">{message}</span>
   </div>
@@ -37,7 +33,7 @@ const friendlyError = (err: unknown): string => {
   if (lower.includes('function url is not configured')) {
     return 'Backend is not configured. Please set VITE_FUNCTION_URL or try again later.';
   }
-  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('aborterror')) {
+  if (lower.includes('failed to fetch') || lower.includes('network') || lower.includes('aborterror') || lower.includes('load failed')) {
     return 'Could not reach the backend. Please check your connection and try again.';
   }
   if (lower.includes('cors')) {
@@ -59,34 +55,35 @@ interface ResultsBlockProps {
 const ResultsBlock: React.FC<ResultsBlockProps> = ({ title, data, onRefresh, isLoading, family, onTogglePin, tempUnit }) => {
   if (!data.weather || !data.suggestions) {
     return (
-      <div className="bg-white dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg animate-fade-in-fast">
-         <p className="text-center text-slate-500">Could not retrieve complete suggestions. Please try again.</p>
+      <div className="glass-panel p-6 rounded-2xl animate-fade-in">
+         <p className="text-center text-slate-400">Could not retrieve complete suggestions. Please try again.</p>
       </div>
     )
   }
   return (
-    <div className="bg-white dark:bg-slate-800/50 p-4 sm:p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-lg animate-fade-in-fast">
-      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-        <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{title}</h2>
+    <div className="glass-panel p-6 rounded-2xl animate-fade-in transition-all">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <h2 className="text-2xl font-bold text-white tracking-tight">{title}</h2>
         <button
           onClick={onRefresh}
           disabled={isLoading}
-          className="px-4 py-2 text-sm font-semibold text-indigo-600 bg-indigo-100 rounded-full hover:bg-indigo-200 dark:bg-indigo-900/50 dark:text-indigo-300 dark:hover:bg-indigo-900/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 text-sm font-semibold text-indigo-100 bg-white/10 rounded-full hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all backdrop-blur-sm border border-white/5"
           aria-label="Refresh suggestions"
         >
-          Refresh
+          {isLoading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
       {data.weather && <WeatherDisplay weather={data.weather} tempUnit={tempUnit} />}
-      {data.suggestions && <SuggestionsTabs suggestions={data.suggestions} family={family} onTogglePin={onTogglePin} />}
+      <div className="mt-6">
+        {data.suggestions && <SuggestionsTabs suggestions={data.suggestions} family={family} onTogglePin={onTogglePin} />}
+      </div>
     </div>
   );
 };
 
 
 const App: React.FC = () => {
-  // State for local weather suggestions
-  const [dailyLoadingMessage, setDailyLoadingMessage] = useState<string | null>(null);
+  const [isDailyLoading, setIsDailyLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<GeminiResponse | null>(null);
   const [dailyScheduleInput, setDailyScheduleInput] = useState<string>('');
@@ -94,13 +91,11 @@ const App: React.FC = () => {
   const [showManualLocation, setShowManualLocation] = useState<boolean>(false);
   const [manualLocationInput, setManualLocationInput] = useState<string>('');
 
-  // State for travel suggestions
-  const [travelLoadingMessage, setTravelLoadingMessage] = useState<string | null>(null);
+  const [isTravelLoading, setIsTravelLoading] = useState(false);
   const [travelError, setTravelError] = useState<string | null>(null);
   const [travelData, setTravelData] = useState<GeminiResponse | null>(null);
   const [travelInput, setTravelInput] = useState<string>('');
   
-  // Shared state
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [showLocationExplanation, setShowLocationExplanation] = useState(false);
   const pendingRequestDayRef = useRef<'today' | 'tomorrow' | null>(null);
@@ -109,17 +104,13 @@ const App: React.FC = () => {
   const [tempUnit, setTempUnit, resetTempUnit] = useLocalStorage<'C' | 'F'>(TEMP_UNIT_STORAGE_KEY, 'C');
   const [isTravelCalendarConnected, setTravelCalendarConnected, resetTravelCalendar] = useLocalStorage<boolean>(TRAVEL_CALENDAR_STORAGE_key, false);
 
-  // Track if user manually toggled unit (this is session-based, doesn't need persistence across reloads if not desired, or could use another key)
-  // For simplicity, keeping it in component state as it's a temporary override flag logic.
   const [manualTempUnit, setManualTempUnit] = useState<boolean>(false);
   
   const resultsRef = useRef<HTMLDivElement>(null);
   const travelResultsRef = useRef<HTMLDivElement>(null);
-  const loadingIntervalRef = useRef<number | null>(null);
 
   const { coordinates, error: geoError, getCurrentPosition, resetLocationError } = useGeolocation();
 
-  // Clear local preferences
   const clearLocalPreferences = useCallback(() => {
     resetFamily();
     resetTempUnit();
@@ -127,16 +118,8 @@ const App: React.FC = () => {
     setManualTempUnit(false);
   }, [resetFamily, resetTempUnit, resetTravelCalendar]);
 
-
-  // Effect to handle migration/validation of family data if needed could go here
-  // But useLocalStorage handles basic JSON parsing.
-  // The complex migration logic from original App.tsx (string[] -> FamilyMember[]) is hard to put inside generic useLocalStorage.
-  // We can add a one-time check here if we want to be robust, or assume data is clean after initial load.
-  // For safety, let's keep the sorting logic in a useEffect or useMemo if needed, but the original logic
-  // did it on load. Since useLocalStorage initializes once, we might want to validate 'family' structure.
   useEffect(() => {
      if (Array.isArray(family) && family.length > 0 && typeof family[0] === 'string') {
-        // Migration detected
          const migrated = (family as any as string[]).map((name: string) => ({ 
              name, 
              pinned: ['Adult'].includes(name) 
@@ -146,8 +129,6 @@ const App: React.FC = () => {
      }
   }, [family, setFamily]);
 
-
-  // Helper: infer region from location string
   function inferRegionUnit(location: string): 'C' | 'F' {
     if (!location) return 'C';
     const usZip = /^\d{5}(-\d{4})?$/;
@@ -158,16 +139,16 @@ const App: React.FC = () => {
   }
 
   useEffect(() => {
-    if (data && !dailyLoadingMessage) {
+    if (data && !isDailyLoading) {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [data, dailyLoadingMessage]);
+  }, [data, isDailyLoading]);
   
   useEffect(() => {
-    if (travelData && !travelLoadingMessage) {
+    if (travelData && !isTravelLoading) {
       travelResultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [travelData, travelLoadingMessage]);
+  }, [travelData, isTravelLoading]);
 
   const handleTogglePin = useCallback((memberName: string) => {
     setFamily(currentFamily => {
@@ -179,7 +160,6 @@ const App: React.FC = () => {
     });
   }, [setFamily]);
 
-  // Main logic for fetching suggestions
   const fetchSuggestions = useCallback(async (day: 'today' | 'tomorrow', lat?: number, lon?: number, locationText?: string) => {
       const familyNames = family.map(f => f.name);
       try {
@@ -202,16 +182,14 @@ const App: React.FC = () => {
       } catch (err) {
           setError(friendlyError(err));
       } finally {
-          if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-          setDailyLoadingMessage(null);
+          setIsDailyLoading(false);
       }
   }, [family, dailyScheduleInput, manualTempUnit, setTempUnit]);
 
-  // Handle Geolocation Updates
   useEffect(() => {
       if (coordinates && pendingRequestDayRef.current) {
           const day = pendingRequestDayRef.current;
-          pendingRequestDayRef.current = null; // Clear pending
+          pendingRequestDayRef.current = null;
           setShowManualLocation(false);
           setManualLocationInput('');
           fetchSuggestions(day, coordinates.latitude, coordinates.longitude);
@@ -220,38 +198,17 @@ const App: React.FC = () => {
            pendingRequestDayRef.current = null;
            setError(geoError);
            setShowManualLocation(true);
-           if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-           setDailyLoadingMessage(null);
+           setIsDailyLoading(false);
       }
   }, [coordinates, geoError, fetchSuggestions]);
 
-  const startLoadingAnimation = useCallback((day: 'today' | 'tomorrow') => {
-    const familyNames = family.map(f => f.name);
-    const messages = [
-        `Fetching ${day}'s forecast...`,
-        "Analyzing local weather patterns...",
-        "Considering your daily schedule...",
-        ...familyNames.map(name => `Tailoring suggestions for ${name}...`),
-        "Finalizing recommendations..."
-    ];
-    let messageIndex = 0;
-    setDailyLoadingMessage(messages[messageIndex]);
-    messageIndex++;
-
-    loadingIntervalRef.current = window.setInterval(() => {
-        setDailyLoadingMessage(messages[messageIndex]);
-        messageIndex = (messageIndex + 1) % messages.length;
-    }, 2500);
-  }, [family]);
 
   const handleGetSuggestions = useCallback((day: 'today' | 'tomorrow', opts?: { skipPermissionPrompt?: boolean }) => {
-    if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
     setError(null);
     setData(null);
     setLastRequestType(day);
     resetLocationError();
-
-    startLoadingAnimation(day);
+    setIsDailyLoading(true);
 
     if (showManualLocation && manualLocationInput.trim()) {
         fetchSuggestions(day, undefined, undefined, manualLocationInput);
@@ -260,32 +217,24 @@ const App: React.FC = () => {
 
     if (showManualLocation && !manualLocationInput.trim()) {
         setError("Please enter a location to get suggestions.");
-        if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-        setDailyLoadingMessage(null);
+        setIsDailyLoading(false);
         return;
     }
     
-    // Check permissions flow
     const skipPrompt = opts?.skipPermissionPrompt === true;
     if (!skipPrompt && !showManualLocation) {
-        // Check if we already have coords? simpler to just ask again or rely on browser cache
-        // But for UX, let's show the explanation first if we haven't asked before or if we want to be polite
-        // The original logic showed explanation first.
       pendingRequestDayRef.current = day;
       setShowLocationExplanation(true);
-      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-      setDailyLoadingMessage(null);
+      setIsDailyLoading(false);
       return;
     }
     
-    // If we skip prompt (user clicked Allow), trigger geo
     if (skipPrompt) {
-         pendingRequestDayRef.current = day; // Set pending again so effect catches it
-         startLoadingAnimation(day); // Restart animation that was stopped
+         pendingRequestDayRef.current = day;
+         setIsDailyLoading(true);
          getCurrentPosition();
     }
-
-  }, [showManualLocation, manualLocationInput, startLoadingAnimation, fetchSuggestions, getCurrentPosition, resetLocationError]);
+  }, [showManualLocation, manualLocationInput, fetchSuggestions, getCurrentPosition, resetLocationError]);
 
 
   const handleGetTravelSuggestions = useCallback(async () => {
@@ -294,29 +243,11 @@ const App: React.FC = () => {
         return;
     }
     
-    if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-    
     setTravelError(null);
     setTravelData(null);
+    setIsTravelLoading(true);
     
     const familyNames = family.map(f => f.name);
-
-    const messages = [
-        `Generating packing list for ${travelInput}...`,
-        "Researching typical weather conditions...",
-        ...familyNames.map(name => `Creating packing list for ${name}...`),
-        "Adding travel essentials...",
-        "Finalizing your packing list..."
-    ];
-    
-    let messageIndex = 0;
-    setTravelLoadingMessage(messages[messageIndex]);
-    messageIndex++;
-
-    loadingIntervalRef.current = window.setInterval(() => {
-        setTravelLoadingMessage(messages[messageIndex]);
-        messageIndex = (messageIndex + 1) % messages.length;
-    }, 2500);
     
     try {
       const result = await getTravelClothingSuggestions(travelInput, familyNames);
@@ -330,44 +261,41 @@ const App: React.FC = () => {
     } catch (err) {
       setTravelError(friendlyError(err));
     } finally {
-      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current);
-      setTravelLoadingMessage(null);
+      setIsTravelLoading(false);
     }
   }, [travelInput, family, manualTempUnit, setTempUnit]);
 
   const generateResultsTitle = (day: 'today' | 'tomorrow' | null): string => {
     if (!day) return '';
-    
     const date = new Date();
-    if (day === 'tomorrow') {
-      date.setDate(date.getDate() + 1);
-    }
-
+    if (day === 'tomorrow') date.setDate(date.getDate() + 1);
     const options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric' };
     const dateString = date.toLocaleDateString(undefined, options);
     const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
-    
     return `${dayLabel}'s Outfit Suggestions (${dateString})`;
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans flex flex-col">
+    <div className="min-h-screen text-slate-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
       {showLocationExplanation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Allow location access?</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Family Weather Wardrobe would like to use your device's location to show local weather and personalized outfit suggestions. We only use your location to fetch weather and do not store precise coordinates. We may infer your region from the location to auto-select Celsius or Fahrenheit for display; this inferred preference is stored locally in your browser's storage and can be overridden at any time using the temperature unit toggle. If you prefer not to share your location, you can enter a location manually instead.</p>
-            <div className="flex gap-3 justify-end">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-fade-in">
+          <div className="glass-panel bg-slate-900/90 rounded-2xl shadow-2xl max-w-md w-full p-8 border border-white/10">
+            <h3 className="text-xl font-bold text-white mb-3">Allow location access?</h3>
+            <p className="text-slate-300 mb-6 leading-relaxed">
+              We use your device's location to fetch local weather for accurate outfit suggestions. Your location data is not stored. 
+              <br/><br/>
+              Prefer not to share? You can enter a city manually.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-end">
               <button
                 onClick={() => {
                   setShowLocationExplanation(false);
                   setShowManualLocation(true);
-                  // Ensure we clear pending request but keep the intent for manual
                   pendingRequestDayRef.current = null;
                 }}
-                className="px-4 py-2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200"
+                className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors border border-white/5 font-medium"
               >
-                Enter location manually
+                Enter manually
               </button>
               <button
                 onClick={() => {
@@ -375,156 +303,158 @@ const App: React.FC = () => {
                   setShowLocationExplanation(false);
                   handleGetSuggestions(pending, { skipPermissionPrompt: true });
                 }}
-                className="px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+                className="px-5 py-2.5 rounded-xl btn-primary font-bold tracking-wide"
               >
-                Allow location
+                Allow Access
               </button>
             </div>
           </div>
         </div>
       )}
-      <main className="container mx-auto px-4 py-8 sm:py-16 flex-grow">
-        <header className="w-full max-w-4xl mx-auto text-center mb-10">
-            <div className="flex justify-center items-center gap-3 mb-2 flex-wrap">
-                <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-800 dark:text-white">
-                  Family Weather Wardrobe
+      <main className="container mx-auto px-4 py-12 flex-grow flex flex-col items-center">
+        <header className="w-full max-w-4xl text-center mb-12 animate-slide-up">
+            <div className="flex justify-center items-center gap-4 mb-4 flex-wrap">
+                <h1 className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-indigo-400 drop-shadow-sm">
+                  Weather Wardrobe
                 </h1>
-                <TempUnitToggle unit={tempUnit} onToggle={unit => {
-                  setTempUnit(unit);
-                  setManualTempUnit(true);
-                }} />
+                <div className="glass-panel rounded-full px-1 py-1">
+                  <TempUnitToggle unit={tempUnit} onToggle={unit => {
+                    setTempUnit(unit);
+                    setManualTempUnit(true);
+                  }} />
+                </div>
             </div>
-            <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
-              AI-powered clothing advice for today's weather or your next trip.
+            <p className="text-xl text-slate-300 max-w-2xl mx-auto font-light leading-relaxed">
+              AI-powered outfit intelligence for your family's daily adventures and travels.
             </p>
         </header>
 
-        <div className="flex flex-col items-center justify-center space-y-6">
+        <div className="w-full max-w-4xl space-y-8">
           {/* --- Main Action Buttons --- */}
-          <div className="flex flex-col sm:flex-row items-stretch justify-center gap-3 w-full max-w-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.1s' }}>
             <button
               onClick={() => handleGetSuggestions('today')}
-              disabled={!!dailyLoadingMessage}
-              title="Get today's forecast and outfit suggestions"
-              className="group relative inline-flex items-center justify-center px-6 py-3 text-base font-bold text-white bg-indigo-600 rounded-full shadow-lg hover:bg-indigo-700 active:bg-indigo-800 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300 dark:focus:ring-indigo-800 disabled:bg-slate-400 disabled:cursor-not-allowed disabled:scale-100 w-full"
+              disabled={isDailyLoading}
+              className="btn-primary py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg disabled:opacity-50 disabled:scale-100 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
-              <UserGroupIcon className="w-5 h-5 mr-2 transition-transform group-hover:rotate-12" />
+              <UserGroupIcon className="w-6 h-6" />
               For Today
             </button>
             <button
               onClick={() => handleGetSuggestions('tomorrow')}
-              disabled={!!dailyLoadingMessage}
-              title="Get tomorrow's forecast and outfit suggestions"
-              className="group relative inline-flex items-center justify-center px-6 py-3 text-base font-bold text-white bg-sky-600 rounded-full shadow-lg hover:bg-sky-700 active:bg-sky-800 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-sky-300 dark:focus:ring-sky-800 disabled:bg-slate-400 disabled:cursor-not-allowed disabled:scale-100 w-full"
+              disabled={isDailyLoading}
+              className="glass-btn bg-white/5 hover:bg-white/10 py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg text-indigo-100 disabled:opacity-50 disabled:scale-100 transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/10"
             >
-              <CalendarIcon className="w-5 h-5 mr-2 transition-transform group-hover:rotate-12" />
+              <CalendarIcon className="w-6 h-6 text-indigo-300" />
               For Tomorrow
             </button>
             <button
               onClick={() => setIsConfigOpen(true)}
-              title="Configure family members"
-              className="group relative inline-flex items-center justify-center px-6 py-3 text-base font-bold text-slate-600 dark:text-slate-200 bg-slate-200 dark:bg-slate-700 rounded-full shadow-lg hover:bg-slate-300 dark:hover:bg-slate-600 active:bg-slate-400 dark:active:bg-slate-500 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-slate-300 dark:focus:ring-slate-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100 w-full"
+              className="glass-btn bg-white/5 hover:bg-white/10 py-4 rounded-2xl flex items-center justify-center gap-3 font-semibold text-lg text-slate-300 disabled:opacity-50 disabled:scale-100 transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/10"
             >
-              <CogIcon className="w-5 h-5 mr-2 transition-transform group-hover:rotate-12" />
-              Configure Family
+              <CogIcon className="w-6 h-6 text-slate-400" />
+              Configure
             </button>
           </div>
           
           {/* --- Optional Inputs Card --- */}
-          <div className="w-full max-w-lg">
-            <div className="bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
-                {showManualLocation && (
-                    <div className="animate-fade-in-fast">
-                        <label htmlFor="manual-location" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Location
-                        </label>
+          <div className="glass-panel p-6 rounded-2xl animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 {/* Location Field - Only shows if active or toggleable */}
+                 <div className={`${!showManualLocation ? 'hidden md:block opacity-50 pointer-events-none' : ''}`}>
+                    <label htmlFor="manual-location" className="block text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">
+                        Location
+                    </label>
+                    {showManualLocation ? (
                         <input
                             id="manual-location"
                             type="text"
                             value={manualLocationInput}
                             onChange={(e) => setManualLocationInput(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && !dailyLoadingMessage) handleGetSuggestions('today'); }}
-                            placeholder="e.g., 'London, UK' or '90210'"
-                            className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            aria-label="Manual location input"
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !isDailyLoading) handleGetSuggestions('today'); }}
+                            placeholder="e.g., London, UK"
+                            className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600"
                             autoFocus
                         />
-                    </div>
-                )}
+                    ) : (
+                         <div className="px-4 py-3 border border-dashed border-slate-700 rounded-xl text-slate-500 italic text-sm">
+                            Using GPS (Click "For Today" to start)
+                         </div>
+                    )}
+                 </div>
                 
                 <div>
-                    <label htmlFor="daily-schedule" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Daily Schedule <span className="text-slate-400">(Optional)</span>
+                    <label htmlFor="daily-schedule" className="block text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">
+                        Daily Schedule <span className="text-slate-500 font-normal normal-case ml-1">(Optional)</span>
                     </label>
                     <input
                         id="daily-schedule"
                         type="text"
                         value={dailyScheduleInput}
                         onChange={(e) => setDailyScheduleInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !dailyLoadingMessage) handleGetSuggestions('today'); }}
-                        placeholder="e.g., morning run, afternoon meeting"
-                        className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                        aria-label="Daily schedule input"
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !isDailyLoading) handleGetSuggestions('today'); }}
+                        placeholder="e.g., morning run, 2pm meeting..."
+                        className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all placeholder:text-slate-600"
                     />
                 </div>
             </div>
           </div>
           
           {/* --- Today's Suggestions --- */}
-          {dailyLoadingMessage && <Spinner message={dailyLoadingMessage} />}
+          {isDailyLoading && <SkeletonLoader />}
           {error && <ErrorMessage message={error} />}
           {data && lastRequestType && (
-            <div ref={resultsRef} className="w-full max-w-4xl">
-              <ResultsBlock title={generateResultsTitle(lastRequestType)} data={data} onRefresh={() => lastRequestType && handleGetSuggestions(lastRequestType)} isLoading={!!dailyLoadingMessage} family={family} onTogglePin={handleTogglePin} tempUnit={tempUnit}/>
+            <div ref={resultsRef} className="animate-fade-in">
+              <ResultsBlock title={generateResultsTitle(lastRequestType)} data={data} onRefresh={() => lastRequestType && handleGetSuggestions(lastRequestType)} isLoading={isDailyLoading} family={family} onTogglePin={handleTogglePin} tempUnit={tempUnit}/>
             </div>
           )}
 
-          <div className="w-full max-w-4xl h-px bg-slate-200 dark:bg-slate-700 my-8"></div>
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent my-10"></div>
           
           {/* --- Travel Planner --- */}
-          <div className="w-full max-w-4xl mx-auto">
-            <h2 className="text-3xl font-bold text-center mb-4 text-slate-800 dark:text-white">Upcoming Travel</h2>
+          <section className="space-y-6">
+            <h2 className="text-3xl font-bold text-center text-white flex items-center justify-center gap-3">
+                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">Travel Planner</span>
+            </h2>
+            
              {!isTravelCalendarConnected ? (
                  <div className="text-center">
-                    <button onClick={() => setTravelCalendarConnected(true)} className="inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:underline" title="Generate a packing list for an upcoming trip">
+                    <button onClick={() => setTravelCalendarConnected(true)} className="inline-flex items-center gap-2 text-indigo-300 hover:text-white transition-colors hover:underline underline-offset-4" title="Generate a packing list for an upcoming trip">
                         <CalendarIcon className="w-5 h-5" />
                         Plan a packing list for a trip
                     </button>
                  </div>
              ) : (
-                <div className="bg-white dark:bg-slate-800/50 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <div className="glass-panel p-2 rounded-2xl flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"
                         value={travelInput}
                         onChange={(e) => setTravelInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleGetTravelSuggestions(); }}
-                        placeholder="e.g., 'Paris for 5 days' or 'Vienna for Christmas'"
-                        className="flex-grow w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="e.g., 'Paris for 5 days'..."
+                        className="flex-grow bg-slate-900/50 border-none rounded-xl px-6 py-4 text-white focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all placeholder:text-slate-600"
                       />
                       <button
                         onClick={handleGetTravelSuggestions}
-                        disabled={!!travelLoadingMessage}
-                        title="Generate a packing list for your trip"
-                        className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-slate-800 disabled:bg-slate-400"
+                        disabled={isTravelLoading}
+                        className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                       >
-                        Generate Packing List
+                        {isTravelLoading ? 'Planning...' : 'Generate List'}
                       </button>
-                    </div>
                 </div>
              )}
-          </div>
+          </section>
           
           {/* --- Travel Suggestions --- */}
-          {travelLoadingMessage && <Spinner message={travelLoadingMessage} />}
+          {isTravelLoading && <SkeletonLoader />}
           {travelError && <ErrorMessage message={travelError} />}
           {travelData && (
-            <div ref={travelResultsRef} className="w-full max-w-4xl mt-6">
+            <div ref={travelResultsRef} className="mt-6 animate-fade-in">
                 <ResultsBlock
                     title={travelData.weather?.dateRange ? `${travelData.weather.location} (${travelData.weather.dateRange})` : travelData.weather?.location || 'Travel Packing List'}
                     data={travelData}
                     onRefresh={handleGetTravelSuggestions}
-                    isLoading={!!travelLoadingMessage}
+                    isLoading={isTravelLoading}
                     family={family}
                     onTogglePin={handleTogglePin}
                     tempUnit={tempUnit}
@@ -533,9 +463,9 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
-      <footer className="w-full max-w-4xl mx-auto text-center px-4 py-6">
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Disclaimer: The clothing and weather information provided is AI-generated. Please verify local weather conditions independently and dress appropriately. You are responsible for your own safety and comfort.
+      <footer className="text-center py-8 text-slate-500 text-xs">
+        <p className="max-w-2xl mx-auto px-4">
+          Disclaimer: AI-generated advice. Verify local weather conditions. <br/> Built with 💜 and Gemini.
         </p>
       </footer>
       {isConfigOpen && <FamilyConfigModal family={family} setFamily={setFamily} onClose={() => setIsConfigOpen(false)} clearLocalPreferences={clearLocalPreferences} />}

@@ -9,13 +9,13 @@ interface TempUnitToggleProps {
 const TempUnitToggle: React.FC<TempUnitToggleProps> = ({ unit, onToggle }) => {
   return (
     <nav aria-label="Temperature unit selector">
-      <div className="flex items-center p-1 bg-slate-200 dark:bg-slate-700 rounded-full" role="group" aria-label="Temperature unit toggle">
+      <div className="flex items-center p-1" role="group" aria-label="Temperature unit toggle">
         <button
           onClick={() => onToggle('C')}
-          className={`px-3 py-1 text-sm font-bold rounded-full transition-colors ${
+          className={`px-3 py-1 text-sm font-bold rounded-full transition-all ${
             unit === 'C'
-              ? 'bg-white text-slate-800 shadow dark:bg-slate-900 dark:text-slate-100'
-              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+              ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30'
+              : 'text-slate-400 hover:text-white'
           }`}
           aria-pressed={unit === 'C'}
           aria-label="Celsius"
@@ -24,10 +24,10 @@ const TempUnitToggle: React.FC<TempUnitToggleProps> = ({ unit, onToggle }) => {
         </button>
         <button
           onClick={() => onToggle('F')}
-          className={`px-3 py-1 text-sm font-bold rounded-full transition-colors ${
+          className={`px-3 py-1 text-sm font-bold rounded-full transition-all ${
             unit === 'F'
-              ? 'bg-white text-slate-800 shadow dark:bg-slate-900 dark:text-slate-100'
-              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+              ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/30'
+              : 'text-slate-400 hover:text-white'
           }`}
           aria-pressed={unit === 'F'}
           aria-label="Fahrenheit"

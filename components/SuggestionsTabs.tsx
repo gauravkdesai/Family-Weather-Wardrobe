@@ -16,7 +16,7 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
   const minSwipeDistance = 50;
 
   if (!suggestions || suggestions.length === 0) {
-    return <div className="p-6 text-center text-slate-500">No suggestions available.</div>;
+    return <div className="p-6 text-center text-slate-400 italic">No suggestions available.</div>;
   }
 
   const handlePrev = useCallback(() => {
@@ -46,10 +46,8 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
     const isLeftSwipe = distance > minSwipeDistance;
 
     if (isRightSwipe) {
-      // Dragging finger to the right reveals the previous item on the left.
       handlePrev();
     } else if (isLeftSwipe) {
-      // Dragging finger to the left reveals the next item on the right.
       handleNext();
     }
     
@@ -61,35 +59,36 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
   return (
     <div>
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 dark:border-slate-700 overflow-x-auto no-scrollbar">
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mask-linear-fade">
         {suggestions.map((suggestion, index) => {
           if (!suggestion || !suggestion.member) return null;
           const memberData = family.find(f => f.name === suggestion.member);
           const isPinned = memberData?.pinned ?? false;
+          const isActive = activeIndex === index;
 
           return (
             <button
               key={suggestion.member}
               onClick={() => setActiveIndex(index)}
-              className={`flex-shrink-0 flex items-center justify-center gap-2 py-3 px-4 text-center text-sm font-semibold transition-colors focus:outline-none ${
-                activeIndex === index
-                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              className={`flex-shrink-0 flex items-center justify-center gap-2 py-2 px-5 rounded-full text-sm font-bold transition-all focus:outline-none ${
+                isActive
+                  ? 'bg-gradient-to-r from-indigo-500 to-violet-500 text-white shadow-lg shadow-indigo-500/25 scale-105'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/5'
               }`}
             >
-              <span className="truncate">{suggestion.member}</span>
+              <span className="truncate max-w-[120px]">{suggestion.member}</span>
               <span
                 onClick={(e) => {
-                  e.stopPropagation(); // Prevent tab from changing focus on pin click
+                  e.stopPropagation();
                   onTogglePin(suggestion.member);
                 }}
-                className="cursor-pointer p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600"
+                className={`cursor-pointer p-1 rounded-full transition-colors ${isActive ? 'hover:bg-white/20' : 'hover:bg-white/10'}`}
                 aria-label={isPinned ? `Unpin ${suggestion.member}` : `Pin ${suggestion.member}`}
                 role="button"
               >
                 {isPinned 
-                  ? <SolidPinIcon className="w-4 h-4 text-indigo-500" /> 
-                  : <PinIcon className="w-4 h-4 text-slate-400" />
+                  ? <SolidPinIcon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-indigo-400'}`} /> 
+                  : <PinIcon className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-100' : 'text-slate-500'}`} />
                 }
               </span>
             </button>
@@ -99,47 +98,43 @@ const SuggestionsTabs: React.FC<SuggestionsTabsProps> = ({ suggestions, family, 
 
       {/* Content with Swipe Handlers and Arrows */}
       <div 
-        className="relative"
+        className="relative mt-4 min-h-[200px]"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         >
-         <div className="p-4 sm:p-6 min-h-[150px]">
-             <div key={activeIndex} className="animate-fade-in-fast">
-                <SuggestionCard suggestion={suggestions[activeIndex]} />
-             </div>
+         <div key={activeIndex} className="animate-fade-in">
+            <SuggestionCard suggestion={suggestions[activeIndex]} />
          </div>
          
-         {/* Left Arrow */}
-         {activeIndex > 0 && (
-            <button 
-                onClick={handlePrev} 
-                className="absolute left-1 sm:left-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-slate-100/50 dark:bg-slate-900/50 hover:bg-slate-100/80 dark:hover:bg-slate-900/80 backdrop-blur-sm transition-all opacity-70 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                aria-label="Previous suggestion"
-            >
-                <ChevronLeftIcon className="w-6 h-6 text-slate-700 dark:text-slate-200" />
-            </button>
-         )}
-
-         {/* Right Arrow */}
-         {activeIndex < suggestions.length - 1 && (
-            <button 
-                onClick={handleNext} 
-                className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-slate-100/50 dark:bg-slate-900/50 hover:bg-slate-100/80 dark:hover:bg-slate-900/80 backdrop-blur-sm transition-all opacity-70 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                aria-label="Next suggestion"
-            >
-                <ChevronRightIcon className="w-6 h-6 text-slate-700 dark:text-slate-200" />
-            </button>
-         )}
+         {/* Navigation Arrows (Desktop mostly) */}
+         <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 flex justify-between pointer-events-none px-2 sm:px-0">
+             {suggestions.length > 1 && (
+                <>
+                    <button 
+                        onClick={handlePrev} 
+                        className="pointer-events-auto p-3 rounded-full bg-slate-900/40 hover:bg-slate-900/80 backdrop-blur-md text-white transition-all hover:scale-110 focus:outline-none border border-white/10 opacity-0 sm:opacity-100 hover:opacity-100 -ml-4 shadow-xl"
+                        aria-label="Previous suggestion"
+                    >
+                        <ChevronLeftIcon className="w-6 h-6" />
+                    </button>
+                    <button 
+                        onClick={handleNext} 
+                        className="pointer-events-auto p-3 rounded-full bg-slate-900/40 hover:bg-slate-900/80 backdrop-blur-md text-white transition-all hover:scale-110 focus:outline-none border border-white/10 opacity-0 sm:opacity-100 hover:opacity-100 -mr-4 shadow-xl"
+                        aria-label="Next suggestion"
+                    >
+                        <ChevronRightIcon className="w-6 h-6" />
+                    </button>
+                </>
+             )}
+         </div>
       </div>
        <style>{`
           .no-scrollbar::-webkit-scrollbar { display: none; }
           .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-          .animate-fade-in-fast {
-            animation: fadeIn 0.3s ease-in-out;
-          }
+          .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.2, 0, 0, 1) forwards; }
           @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+            from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
           }
         `}</style>

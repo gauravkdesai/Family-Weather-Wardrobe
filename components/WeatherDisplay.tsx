@@ -60,10 +60,18 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
     const pathData = points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p.x} ${p.y}`).join(' ');
 
     return (
-        <div className="w-full mt-4 pt-4 border-t border-slate-200 dark:border-slate-600/50">
+        <div className="w-full mt-6 pt-6 border-t border-white/10">
             <svg viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} className="w-full h-auto" aria-labelledby="weather-graph-title" role="img">
                 <title id="weather-graph-title">A graph showing temperature and weather changes throughout the day.</title>
-                <path d={pathData} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" className="text-slate-400 dark:text-slate-500" />
+                {/* Gradient Definition */}
+                <defs>
+                    <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor="#818cf8" />
+                        <stop offset="100%" stopColor="#22d3ee" />
+                    </linearGradient>
+                </defs>
+                
+                <path d={pathData} fill="none" stroke="url(#lineGradient)" strokeWidth="3" strokeLinecap="round" className="opacity-80 drop-shadow-lg" />
 
                 {points.map((p, i) => {
                     const temp = temperatures[i];
@@ -72,16 +80,16 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
                     
                     return (
                         <g key={i}>
-                            <circle cx={p.x} cy={p.y} r="4" stroke="currentColor" strokeWidth="2" className="text-indigo-500 bg-white dark:bg-slate-700" />
-                            <text x={p.x} y={p.y - 12} textAnchor="middle" fill="currentColor" className="text-sm font-semibold text-slate-700 dark:text-slate-200" aria-label={`Temperature: ${temp} degrees ${tempUnit}`}>
+                            <circle cx={p.x} cy={p.y} r="5" fill="#1e293b" stroke="#22d3ee" strokeWidth="2" />
+                            <text x={p.x} y={p.y - 15} textAnchor="middle" fill="currentColor" className="text-sm font-bold text-white drop-shadow-md" aria-label={`Temperature: ${temp} degrees ${tempUnit}`}>
                                 {temp}°
                             </text>
                             
                             <foreignObject x={p.x - 12} y={SVG_HEIGHT - 40} width="24" height="24" aria-label={`Weather is ${dayParts[i].condition}`}>
-                                <IconComponent className="w-full h-full" />
+                                <IconComponent className="w-full h-full drop-shadow-sm" />
                             </foreignObject>
                             
-                            <text x={p.x} y={SVG_HEIGHT - 10} textAnchor="middle" fill="currentColor" className="text-xs font-mono font-medium text-slate-600 dark:text-slate-300">
+                            <text x={p.x} y={SVG_HEIGHT - 10} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
                               {(() => {
                                 const t = dayParts[i].time || '';
                                 const [hhStr, mmStr] = t.split(':');
@@ -128,25 +136,33 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ weather, tempUnit }) =>
 
   return (
     <section
-      className="bg-slate-100 dark:bg-slate-700/40 rounded-lg p-4 sm:p-6 w-full"
+      className="w-full"
       aria-label={`Weather summary for ${weather.location}`}
     >
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-4 w-full sm:w-auto">
-          <WeatherIcon className="w-16 h-16 flex-shrink-0" aria-hidden="true" />
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-6 w-full sm:w-auto">
+          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm shadow-inner">
+             <WeatherIcon className="w-16 h-16 flex-shrink-0 filter drop-shadow-lg" aria-hidden="true" />
+          </div>
           <div className="flex-grow">
-            <div className="flex items-center gap-2">
-                <LocationMarkerIcon className="w-5 h-5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100" id="weather-location">{weather.location}</h2>
+            <div className="flex items-center gap-2 mb-1">
+                <LocationMarkerIcon className="w-5 h-5 text-indigo-400" aria-hidden="true" />
+                <h2 className="text-2xl font-bold text-white tracking-tight" id="weather-location">{weather.location}</h2>
             </div>
-            <p className="text-slate-600 dark:text-slate-300 pl-7" aria-describedby="weather-location">{condition}</p>
+            <p className="text-lg text-indigo-200 pl-7 font-medium" aria-describedby="weather-location">{condition}</p>
           </div>
         </div>
-        <div className="text-center sm:text-right flex-shrink-0 text-slate-800 dark:text-slate-100">
-          <div className="flex items-baseline justify-center sm:justify-end gap-2">
-            <p className="text-3xl font-semibold" aria-label={`High temperature: ${displayHigh} degrees ${tempUnit}`}>High {displayHigh}°{tempUnit}</p>
-            <span className="text-3xl font-semibold">/</span>
-            <p className="text-3xl font-semibold" aria-label={`Low temperature: ${displayLow} degrees ${tempUnit}`}>Low {displayLow}°{tempUnit}</p>
+        <div className="text-center sm:text-right flex-shrink-0 text-white bg-white/5 px-6 py-3 rounded-2xl border border-white/5">
+          <div className="flex items-baseline justify-center sm:justify-end gap-3">
+            <div className="flex flex-col items-center">
+                 <span className="text-xs text-indigo-300 uppercase tracking-widest font-bold">High</span>
+                 <span className="text-3xl font-black text-white" aria-label={`High temperature: ${displayHigh} degrees ${tempUnit}`}>{displayHigh}°</span>
+            </div>
+            <span className="text-3xl font-light text-slate-500 self-center">/</span>
+            <div className="flex flex-col items-center">
+                 <span className="text-xs text-slate-400 uppercase tracking-widest font-bold">Low</span>
+                 <span className="text-3xl font-bold text-slate-300" aria-label={`Low temperature: ${displayLow} degrees ${tempUnit}`}>{displayLow}°</span>
+            </div>
           </div>
         </div>
       </div>

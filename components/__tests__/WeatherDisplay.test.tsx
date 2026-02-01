@@ -41,16 +41,17 @@ describe('WeatherDisplay', () => {
   it('renders high and low temperatures in Celsius', () => {
     render(<WeatherDisplay weather={mockWeather} tempUnit="C" />);
     
-    expect(screen.getByText('High 25°C')).toBeInTheDocument();
-    expect(screen.getByText('Low 15°C')).toBeInTheDocument();
+    // Updated to use aria-labels as text is now split across elements
+    expect(screen.getByLabelText('High temperature: 25 degrees C')).toBeInTheDocument();
+    expect(screen.getByLabelText('Low temperature: 15 degrees C')).toBeInTheDocument();
   });
 
   it('converts temperatures to Fahrenheit when tempUnit is F', () => {
     render(<WeatherDisplay weather={mockWeather} tempUnit="F" />);
     
     // 25C = 77F, 15C = 59F
-    expect(screen.getByText('High 77°F')).toBeInTheDocument();
-    expect(screen.getByText('Low 59°F')).toBeInTheDocument();
+    expect(screen.getByLabelText('High temperature: 77 degrees F')).toBeInTheDocument();
+    expect(screen.getByLabelText('Low temperature: 59 degrees F')).toBeInTheDocument();
   });
 
   it('renders the timeline graph', () => {
