@@ -338,7 +338,7 @@ const App: React.FC = () => {
               className="btn-primary py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg disabled:opacity-50 disabled:scale-100 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               <UserGroupIcon className="w-6 h-6" />
-              For Today
+              {isDailyLoading && lastRequestType === 'today' ? 'Loading...' : 'For Today'}
             </button>
             <button
               onClick={() => handleGetSuggestions('tomorrow')}
@@ -346,7 +346,7 @@ const App: React.FC = () => {
               className="glass-btn bg-white/5 hover:bg-white/10 py-4 rounded-2xl flex items-center justify-center gap-3 font-bold text-lg text-indigo-100 disabled:opacity-50 disabled:scale-100 transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/10"
             >
               <CalendarIcon className="w-6 h-6 text-indigo-300" />
-              For Tomorrow
+              {isDailyLoading && lastRequestType === 'tomorrow' ? 'Loading...' : 'For Tomorrow'}
             </button>
             <button
               onClick={() => setIsConfigOpen(true)}
