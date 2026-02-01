@@ -45,6 +45,8 @@ export const useGeolocation = () => {
         let message = 'Could not retrieve your location.';
         if (error.code === error.PERMISSION_DENIED) {
           message = 'Location access denied.';
+        } else if (error.code === error.TIMEOUT) {
+          message = 'Location request timed out. Please try entering your city manually.';
         }
         setLocationState({
           loading: false,
@@ -52,7 +54,7 @@ export const useGeolocation = () => {
           coordinates: null,
         });
       },
-      options
+      { timeout: 10000, ...options }
     );
   }, []);
 
