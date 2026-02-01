@@ -411,17 +411,17 @@ const App: React.FC = () => {
 
           <div className="h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent my-10"></div>
           
-          {/* --- Travel Planner --- */}
+          {/* --- Travel Packing List --- */}
           <section className="space-y-6">
             <h2 className="text-3xl font-bold text-center text-white flex items-center justify-center gap-3">
-                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">Travel Planner</span>
+                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400">Trip Packing List</span>
             </h2>
             
              {!isTravelCalendarConnected ? (
                  <div className="text-center">
                     <button onClick={() => setTravelCalendarConnected(true)} className="inline-flex items-center gap-2 text-indigo-300 hover:text-white transition-colors hover:underline underline-offset-4" title="Generate a packing list for an upcoming trip">
                         <CalendarIcon className="w-5 h-5" />
-                        Plan a packing list for a trip
+                        Get a packing list for a trip
                     </button>
                  </div>
              ) : (
@@ -439,7 +439,7 @@ const App: React.FC = () => {
                         disabled={isTravelLoading}
                         className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                       >
-                        {isTravelLoading ? 'Planning...' : 'Generate List'}
+                        {isTravelLoading ? 'Generating...' : 'Generate List'}
                       </button>
                 </div>
              )}
