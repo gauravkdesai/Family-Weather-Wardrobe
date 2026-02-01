@@ -99,4 +99,5 @@ jobs:
             --entry-point=suggestions \
             --trigger-http \
             --allow-unauthenticated \
+            --timeout=120 \
             ${ENV_FLAG[@]:+${ENV_FLAG[@]}}
