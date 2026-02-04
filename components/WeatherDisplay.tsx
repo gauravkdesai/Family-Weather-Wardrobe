@@ -85,9 +85,9 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
                                 {temp}°
                             </text>
                             
-                            <foreignObject x={p.x - 12} y={p.y + 12} width="24" height="24" aria-label={`Weather is ${dayParts[i].condition}`}>
+                            <svg x={p.x - 12} y={p.y + 12} width="24" height="24" aria-label={`Weather is ${dayParts[i].condition}`}>
                                 <IconComponent className="w-full h-full drop-shadow-sm" />
-                            </foreignObject>
+                            </svg>
                             
                             <text x={p.x} y={SVG_HEIGHT - 5} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
                               {(() => {
