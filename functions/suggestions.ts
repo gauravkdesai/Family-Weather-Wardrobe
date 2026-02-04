@@ -206,6 +206,7 @@ const getWeatherAndSuggestions = async (
         
         JSON Structure:
         {
+          "location": "Identify the City and Region (e.g. 'Zurich, Switzerland') from the coordinates or context provided",
           "suggestions": [
             {
               "member": "Member Name",
@@ -400,6 +401,11 @@ export const suggestions: HttpFunction = async (req, res) => {
         // If we used API, resultData.suggestions exists but resultData.weather might be missing
         const weatherData = apiWeatherData || resultData.weather;
         const suggestions = resultData.suggestions || [];
+
+        // Update location if the LLM identified a better name
+        if (resultData.location) {
+            weatherData.location = resultData.location;
+        }
 
         // Post-process weather data (formatting, icons)
         let sunrise = 6 * 60 + 30; 
