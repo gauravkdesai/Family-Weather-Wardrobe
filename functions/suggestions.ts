@@ -30,6 +30,38 @@ const extractText = (response: any): string => {
     return text ? text.trim() : '';
 };
 
+// Helper to reliably extract JSON from text that might contain markdown or chatter
+const extractJson = (text: string): string => {
+    // 1. Try to find markdown code block first
+    const markdownMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+    if (markdownMatch) {
+        return markdownMatch[1];
+    }
+
+    // 2. Fallback: Find the outermost JSON structure (Array or Object)
+    const firstCurly = text.indexOf('{');
+    const firstSquare = text.indexOf('[');
+    
+    let start = -1;
+    let end = -1;
+
+    // Determine if we are looking for an object or an array based on what comes first
+    // If both exist, the one with the smaller index is the outer container
+    if (firstSquare !== -1 && (firstCurly === -1 || firstSquare < firstCurly)) {
+        start = firstSquare;
+        end = text.lastIndexOf(']');
+    } else if (firstCurly !== -1) {
+        start = firstCurly;
+        end = text.lastIndexOf('}');
+    }
+
+    if (start !== -1 && end > start) {
+        return text.substring(start, end + 1);
+    }
+    
+    return text; // Return original if no structure found, let JSON.parse fail normally
+};
+
 const requireModel = () => {
     if (!MODEL_NAME) {
         throw new Error('GEMINI_MODEL is required');
@@ -50,134 +82,77 @@ const log = {
     error: (msg: string, meta?: any) => console.error(JSON.stringify({ level: 'error', msg, ...meta })),
 };
 
-const weatherSchema = {
-    type: 'object',
-    properties: {
-        location: { type: 'string', description: "City and region, e.g., 'San Francisco, CA'" },
-        highTemp: { type: 'integer', description: "Highest temperature for the day in Celsius" },
-        lowTemp: { type: 'integer', description: "Lowest temperature for the day in Celsius" },
-        temp07: { type: 'integer', description: "Temperature at 7:00 AM in Celsius" },
-        temp12: { type: 'integer', description: "Temperature at 12:00 noon in Celsius" },
-        temp17: { type: 'integer', description: "Temperature at 5:00 PM in Celsius" },
-        temp22: { type: 'integer', description: "Temperature at 10:00 PM in Celsius" },
-        condition07: { type: 'string', description: "Weather condition at 7:00 AM" },
-        condition12: { type: 'string', description: "Weather condition at 12:00 noon" },
-        condition17: { type: 'string', description: "Weather condition at 5:00 PM" },
-        condition22: { type: 'string', description: "Weather condition at 10:00 PM" },
-        sunrise: { type: 'string', description: "Local sunrise time in HH:MM 24-hour format" },
-        sunset: { type: 'string', description: "Local sunset time in HH:MM 24-hour format" },
-        dateRange: { type: 'string', description: "For travel packing lists, the interpreted date range for the trip." }
-    },
-    required: ["location", "highTemp", "lowTemp", "temp07", "temp12", "temp17", "temp22", "condition07", "condition12", "condition17", "condition22", "sunrise", "sunset"],
-};
-
-const suggestionSchema = {
-    type: 'array',
-    items: {
-        type: 'object',
-        properties: {
-            member: { type: 'string', description: "The family member, which must exactly match one of the provided member descriptions." },
-            outfit: {
-                type: 'array',
-                items: { type: 'string' },
-                description: "An array of clothing items to wear or pack. For items only needed for part of the day, specify when (e.g., 'Jacket (for evening)')."
-            },
-            notes: { type: 'string', description: "A summary of the reasoning for the outfit suggestions. Briefly explain how the weather forecast and the user's schedule (if provided) influenced the choices. This should be a concise paragraph." }
-        },
-        required: ["member", "outfit", "notes"],
-    }
-};
-
 const jitter = (base: number) => Math.floor(base * (0.5 + Math.random()));
 
-// Get weather data from Google Search
-const getWeatherData = async (prompt: string): Promise<any> => {
-    let lastErr: Error | null = null;
-    let rawText = '';
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            const model = ai.getGenerativeModel({ model: requireModel() });
-            const response = await model.generateContent({
-                contents: asUserContent(prompt),
-                tools: [{ googleSearch: {} }] as any,
-            });
-
-            rawText = extractText(response);
-            let payload = rawText;
-            const b = payload.indexOf('{');
-            const e = payload.lastIndexOf('}');
-            if (b >= 0 && e > b) {
-                payload = payload.substring(b, e + 1);
-            }
-            const parsed = JSON.parse(payload);
-            if (!parsed || !parsed.location) {
-                throw new Error('Missing location in weather data');
-            }
-            return parsed;
-        } catch (err) {
-            lastErr = err instanceof Error ? err : new Error(String(err));
-            log.error('getWeatherData attempt failed', { attempt, error: lastErr.message });
-            if (attempt === MAX_RETRIES) {
-                log.error('getWeatherData final failure', { rawText });
-                throw new Error(`Failed to get weather data after ${MAX_RETRIES} attempts: ${lastErr.message}`);
-            }
-            const waitMs = jitter(500 * Math.pow(2, attempt));
-            await new Promise(r => setTimeout(r, waitMs));
-        }
-    }
-    throw lastErr || new Error('Unknown failure getting weather');
+// WMO Weather interpretation codes (WW) to human readable strings
+const mapWmoCodeToCondition = (code: number): string => {
+    if (code === 0) return 'Clear';
+    if (code === 1) return 'Mostly Sunny';
+    if (code === 2) return 'Partly Cloudy';
+    if (code === 3) return 'Cloudy';
+    if (code === 45 || code === 48) return 'Foggy';
+    if (code >= 51 && code <= 55) return 'Drizzle';
+    if (code >= 56 && code <= 57) return 'Freezing Drizzle';
+    if (code >= 61 && code <= 65) return 'Rain';
+    if (code >= 66 && code <= 67) return 'Freezing Rain';
+    if (code >= 71 && code <= 75) return 'Snow';
+    if (code === 77) return 'Snow Grains';
+    if (code >= 80 && code <= 82) return 'Rain Showers';
+    if (code >= 85 && code <= 86) return 'Snow Showers';
+    if (code >= 95) return 'Thunderstorm';
+    return 'Cloudy';
 };
 
-// Get clothing suggestions from Gemini (no grounding needed)
-const getClothingSuggestions = async (prompt: string): Promise<any[]> => {
-    let lastErr: Error | null = null;
-    let rawText = '';
+async function fetchWeatherFromApi(lat: number, lon: number, day: 'today' | 'tomorrow'): Promise<any> {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=2`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Weather API failed: ${res.statusText}`);
+    const data = await res.json();
+    
+    const dayIdx = day === 'tomorrow' ? 1 : 0;
+    const dateStr = data.daily.time[dayIdx];
+    
+    // Find hourly indices for 7, 12, 17, 22
+    const hourlyTimes = data.hourly.time;
+    const findHourIdx = (hour: number) => {
+        const target = `${dateStr}T${hour.toString().padStart(2, '0')}:00`;
+        return hourlyTimes.findIndex((t: string) => t.startsWith(target));
+    };
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            const model = ai.getGenerativeModel({ model: requireModel() });
-            const response = await model.generateContent({
-                contents: asUserContent(prompt),
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    responseSchema: suggestionSchema as any,
-                },
-            });
+    const idx07 = findHourIdx(7);
+    const idx12 = findHourIdx(12);
+    const idx17 = findHourIdx(17);
+    const idx22 = findHourIdx(22);
 
-            rawText = extractText(response);
-            let payload = rawText;
-            if (payload.startsWith('```json')) {
-                payload = payload.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-            } else {
-                const b = payload.indexOf('[');
-                const e = payload.lastIndexOf(']');
-                if (b >= 0 && e > b) payload = payload.substring(b, e + 1);
-            }
+    return {
+        highTemp: Math.round(data.daily.temperature_2m_max[dayIdx]),
+        lowTemp: Math.round(data.daily.temperature_2m_min[dayIdx]),
+        temp07: idx07 !== -1 ? Math.round(data.hourly.temperature_2m[idx07]) : null,
+        condition07: idx07 !== -1 ? mapWmoCodeToCondition(data.hourly.weathercode[idx07]) : null,
+        temp12: idx12 !== -1 ? Math.round(data.hourly.temperature_2m[idx12]) : null,
+        condition12: idx12 !== -1 ? mapWmoCodeToCondition(data.hourly.weathercode[idx12]) : null,
+        temp17: idx17 !== -1 ? Math.round(data.hourly.temperature_2m[idx17]) : null,
+        condition17: idx17 !== -1 ? mapWmoCodeToCondition(data.hourly.weathercode[idx17]) : null,
+        temp22: idx22 !== -1 ? Math.round(data.hourly.temperature_2m[idx22]) : null,
+        condition22: idx22 !== -1 ? mapWmoCodeToCondition(data.hourly.weathercode[idx22]) : null,
+        sunrise: data.daily.sunrise[dayIdx].split('T')[1],
+        sunset: data.daily.sunset[dayIdx].split('T')[1],
+    };
+}
 
-            const parsed = JSON.parse(payload);
-            if (!Array.isArray(parsed)) {
-                throw new Error('Expected array of suggestions');
-            }
-            // Validate structure
-            const valid = parsed.filter((item: any) => item && item.member && Array.isArray(item.outfit));
-            if (valid.length === 0 && parsed.length > 0) {
-                 log.error('Received suggestions with invalid structure', { parsed });
-            }
-            return valid;
-        } catch (err) {
-            lastErr = err instanceof Error ? err : new Error(String(err));
-            log.error('getClothingSuggestions attempt failed', { attempt, error: lastErr.message });
-            if (attempt === MAX_RETRIES) {
-                log.error('getClothingSuggestions final failure', { rawText });
-                throw new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts: ${lastErr.message}`);
-            }
-            const waitMs = jitter(500 * Math.pow(2, attempt));
-            await new Promise(r => setTimeout(r, waitMs));
-        }
-    }
-    throw lastErr || new Error('Unknown failure getting suggestions');
-};
+async function geocodeLocation(location: string): Promise<{lat: number, lon: number, name: string}> {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Geocoding API failed: ${res.statusText}`);
+    const data = await res.json();
+    if (!data.results || data.results.length === 0) throw new Error(`Location not found: ${location}`);
+    const result = data.results[0];
+    return {
+        lat: result.latitude,
+        lon: result.longitude,
+        name: `${result.name}${result.admin1 ? ', ' + result.admin1 : ''}${result.country ? ', ' + result.country : ''}`
+    };
+}
 
 // Map condition text to icon keyword
 const mapConditionToIcon = (condition: string, isNight?: boolean): string => {
@@ -203,100 +178,122 @@ const parseTimeToMinutes = (time: string): number | null => {
     return hours * 60 + minutes;
 };
 
-export const createWeatherPrompt = (day: 'today' | 'tomorrow', locationInfo?: { lat: number, lon: number } | { location: string }): string => {
-    const dayPromptPart = day === 'tomorrow' ? 'for tomorrow' : 'for today';
-    
-    let locationPromptPart = '';
-    if (locationInfo && 'lat' in locationInfo) {
-        locationPromptPart = `at latitude ${locationInfo.lat} and longitude ${locationInfo.lon}`;
-    } else if (locationInfo && 'location' in locationInfo) {
-        locationPromptPart = `for the location "${locationInfo.location}"`;
+// Combine weather and clothing retrieval into a single LLM call with tools
+const getWeatherAndSuggestions = async (
+    promptContext: string,
+    family: string[],
+    mode: 'full' | 'weather-only' | 'clothing-only',
+    providedWeather?: any
+): Promise<any> => {
+    let lastErr: Error | null = null;
+    let rawText = '';
+
+    let prompt = '';
+    let tools: any[] = [];
+
+    if (providedWeather) {
+        prompt = `
+        TASK: Generate clothing suggestions for: ${family.join(', ')}.
+        
+        CONTEXT: ${promptContext}
+        
+        BASE your suggestions STRICTLY on the provided weather data below.
+        
+        WEATHER DATA:
+        ${JSON.stringify(providedWeather, null, 2)}
+        
+        Output a SINGLE valid JSON object.
+        
+        JSON Structure:
+        {
+          "suggestions": [
+            {
+              "member": "Member Name",
+              "outfit": ["Item 1", "Item 2 (note)"],
+              "notes": "Reasoning..."
+            }
+          ]
+        }
+        `;
+    } else {
+        prompt = `
+        TASK: Provide real-time weather and clothing suggestions.
+        
+        STEP 1: USE GOOGLE SEARCH to find the SPECIFIC forecast for: ${promptContext}.
+        - CRITICAL: You MUST use the real-time data from the search result. DO NOT use your internal knowledge base for temperatures.
+        - If the location is in Switzerland, look for "MeteoSchweiz" or "MeteoSwiss" data in the search results.
+        - Extract: High/Low temps, current condition, and hourly forecast (7am, 12pm, 5pm, 10pm).
+        
+        STEP 2: Generate clothing suggestions for: ${family.join(', ')}.
+        - Base these STRICTLY on the extracted weather data from Step 1.
+        
+        Output a SINGLE valid JSON object.
+        
+        Constraint: If you cannot find real-time weather data via Google Search, do not guess. Return a JSON with "error": "Could not fetch real-time weather".
+        
+        JSON Structure:
+        {
+          "weather": {
+            "location": "City, Region",
+            "highTemp": 25,
+            "lowTemp": 15,
+            "temp07": 16, "condition07": "Sunny",
+            "temp12": 24, "condition12": "Partly Cloudy",
+            "temp17": 22, "condition17": "Cloudy",
+            "temp22": 18, "condition22": "Clear",
+            "sunrise": "06:30",
+            "sunset": "20:45",
+            "dateRange": "Optional date range string if travel"
+          },
+          "suggestions": [
+            {
+              "member": "Member Name",
+              "outfit": ["Item 1", "Item 2 (note)"],
+              "notes": "Reasoning..."
+            }
+          ]
+        }
+        `;
+        tools = [{ googleSearch: {} }];
     }
 
-    return `Using real-time weather data from Google Search ${dayPromptPart} ${locationPromptPart}, provide the weather forecast.
-If the location is in Switzerland, prioritize weather data from MeteoSchweiz. For all other locations, use the best available real-time weather data.
-Also find the local sunrise and sunset times.
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const model = ai.getGenerativeModel({ model: requireModel() });
+            const requestOptions: any = {
+                contents: asUserContent(prompt)
+            };
+            if (tools.length > 0) {
+                requestOptions.tools = tools;
+            }
 
-The response MUST be a single, valid JSON object with these exact fields:
-- "location": the city and region (e.g., "Zurich, Switzerland")
-- "highTemp": the day's high temperature in Celsius (integer)
-- "lowTemp": the day's low temperature in Celsius (integer)
-- "temp07": temperature at 7:00 AM in Celsius (integer)
-- "temp12": temperature at 12:00 noon in Celsius (integer)
-- "temp17": temperature at 5:00 PM in Celsius (integer)
-- "temp22": temperature at 10:00 PM in Celsius (integer)
-- "condition07": brief weather condition at 7:00 AM (e.g., "Clear", "Cloudy", "Light rain")
-- "condition12": brief weather condition at 12:00 noon
-- "condition17": brief weather condition at 5:00 PM
-- "condition22": brief weather condition at 10:00 PM
-- "sunrise": Local sunrise time in HH:MM 24-hour format
-- "sunset": Local sunset time in HH:MM 24-hour format
+            const response = await model.generateContent(requestOptions);
 
-Use Google Search to get accurate, real-time weather data. Do not make up or estimate temperatures.`;
+            rawText = extractText(response);
+            const payload = extractJson(rawText);
+            const parsed = JSON.parse(payload);
+
+            // Validate critical fields
+            if (!providedWeather && (!parsed.weather || !parsed.weather.location)) {
+                throw new Error('Incomplete weather data in response');
+            }
+            if (mode !== 'weather-only' && (!parsed.suggestions || !Array.isArray(parsed.suggestions))) {
+                throw new Error('Missing suggestions in response');
+            }
+
+            return parsed;
+        } catch (err) {
+            lastErr = err instanceof Error ? err : new Error(String(err));
+            log.error('getWeatherAndSuggestions attempt failed', { attempt, error: lastErr.message });
+            if (attempt === MAX_RETRIES) {
+                throw new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts: ${lastErr.message}`);
+            }
+            const waitMs = jitter(500 * Math.pow(2, attempt));
+            await new Promise(r => setTimeout(r, waitMs));
+        }
+    }
+    throw lastErr || new Error('Unknown failure');
 };
-
-export const createClothingPrompt = (family: string[], weatherData: any, rawschedule?: string): string => {
-    const schedule = rawschedule ? rawschedule.substring(0, 300) : '';
-    const schedulePromptPart = schedule && schedule.trim() ? ` The user has provided a schedule: "${schedule}". Suggestions MUST be tailored to these activities.` : '';
-
-    return `Based on the following weather forecast for ${weatherData.location}:
-- High: ${weatherData.highTemp}°C, Low: ${weatherData.lowTemp}°C
-- 7:00 AM: ${weatherData.temp07}°C, ${weatherData.condition07}
-- 12:00 noon: ${weatherData.temp12}°C, ${weatherData.condition12}
-- 5:00 PM: ${weatherData.temp17}°C, ${weatherData.condition17}
-- 10:00 PM: ${weatherData.temp22}°C, ${weatherData.condition22}
-
-Provide clothing suggestions for a family consisting of: ${family.join(', ')}.${schedulePromptPart}
-
-The response MUST be a JSON array of objects. Each object must contain:
-- "member": a string matching one of the provided family members (${family.join(', ')})
-- "outfit": an array of strings listing clothing items. For items only needed for a specific part of the day, specify when (e.g., "Rain jacket (for evening)"). If a suggestion is specifically for an activity in the provided schedule, mention it in parentheses (e.g., "Running shoes (for morning run)").
-- "notes": a string with a brief explanation of the outfit choices based on the weather forecast and schedule.
-
-Clothing suggestions must be practical for the full day's temperature range and conditions. Consider local clothing norms and styles for ${weatherData.location}.`;
-};
-
-export const createTravelWeatherPrompt = (destinationAndDuration: string): string => {
-    return `Using real-time weather data from Google Search for an upcoming trip to ${destinationAndDuration}, provide a weather summary.
-Also find the typical sunrise and sunset times for this period.
-
-The response MUST be a single, valid JSON object with these exact fields:
-- "location": the destination (e.g., "Paris, France")
-- "dateRange": the interpreted date range for the trip (e.g., "Dec 24, 2024 - Dec 28, 2024")
-- "highTemp": typical high temperature in Celsius (integer)
-- "lowTemp": typical low temperature in Celsius (integer)
-- "temp07": typical temperature at 7:00 AM in Celsius (integer)
-- "temp12": typical temperature at 12:00 noon in Celsius (integer)
-- "temp17": typical temperature at 5:00 PM in Celsius (integer)
-- "temp22": typical temperature at 10:00 PM in Celsius (integer)
-- "condition07": brief weather condition at 7:00 AM
-- "condition12": brief weather condition at 12:00 noon
-- "condition17": brief weather condition at 5:00 PM
-- "condition22": brief weather condition at 10:00 PM
-- "sunrise": Local sunrise time in HH:MM 24-hour format
-- "sunset": Local sunset time in HH:MM 24-hour format
-
-Use Google Search to get accurate weather forecast data.`;
-};
-
-export const createTravelClothingPrompt = (family: string[], weatherData: any): string => {
-    return `Based on the following weather forecast for a trip to ${weatherData.location} (${weatherData.dateRange}):
-- High: ${weatherData.highTemp}°C, Low: ${weatherData.lowTemp}°C
-- 7:00 AM: ${weatherData.temp07}°C, ${weatherData.condition07}
-- 12:00 noon: ${weatherData.temp12}°C, ${weatherData.condition12}
-- 5:00 PM: ${weatherData.temp17}°C, ${weatherData.condition17}
-- 10:00 PM: ${weatherData.temp22}°C, ${weatherData.condition22}
-
-Provide a packing list for a family consisting of: ${family.join(', ')}.
-
-The response MUST be a JSON array of objects. Each object must contain:
-- "member": a string matching one of the provided family members (${family.join(', ')})
-- "outfit": an array of strings listing clothing items to pack
-- "notes": a string with packing advice based on the weather forecast
-
-Consider local clothing norms and styles for ${weatherData.location}.`;
-};
-
 
 export const suggestions: HttpFunction = async (req, res) => {
     const origin = req.get('Origin') || '';
@@ -337,38 +334,7 @@ export const suggestions: HttpFunction = async (req, res) => {
         const body = req.body;
         const { requestType, mode = 'full', weatherData: providedWeatherData } = body;
 
-        let weatherPrompt: string;
-        let clothingPrompt: string;
-        let family: string[];
-        let schedule: string | undefined;
-        
-        switch (requestType) {
-            case 'geolocation': {
-                const { lat, lon, family: fam, day, schedule: sched } = body;
-                family = fam;
-                schedule = sched;
-                weatherPrompt = createWeatherPrompt(day, { lat, lon });
-                break;
-            }
-            case 'location': {
-                const { location, family: fam, day, schedule: sched } = body;
-                family = fam;
-                schedule = sched;
-                weatherPrompt = createWeatherPrompt(day, { location });
-                break;
-            }
-            case 'travel': {
-                const { destinationAndDuration, family: fam } = body;
-                family = fam;
-                weatherPrompt = createTravelWeatherPrompt(destinationAndDuration);
-                break;
-            }
-            default:
-                res.status(400).json({ error: 'Invalid request type provided.' });
-                return;
-        }
-
-        // Optional mock mode to avoid calling Gemini
+        // If mock mode
         if (USE_MOCK_GEMINI) {
             res.status(200).json(mockGeminiResponse);
             return;
@@ -379,88 +345,63 @@ export const suggestions: HttpFunction = async (req, res) => {
             return;
         }
 
-        let weatherData = providedWeatherData;
+        // Construct context
+        let promptContext = '';
+        let family: string[] = body.family || [];
+        let schedule = body.schedule || '';
+        let apiWeatherData: any = null;
 
-        // Step 1: Get weather data (if not provided or mode is weather-only/full)
-        if (!weatherData && (mode === 'full' || mode === 'weather-only')) {
-            log.info('Fetching weather data with Google Search');
-            weatherData = await getWeatherData(weatherPrompt);
-        }
-
-        // If mode is 'weather-only', return early
-        if (mode === 'weather-only') {
-             // Construct dayParts for the frontend to render immediately
-            let sunrise = 6 * 60 + 30; // Fallback
-            let sunset = 18 * 60 + 30; // Fallback
-
-            if (weatherData.sunrise && weatherData.sunset) {
-                const sR = parseTimeToMinutes(weatherData.sunrise);
-                const sS = parseTimeToMinutes(weatherData.sunset);
-                if (sR !== null && sS !== null) {
-                    sunrise = sR;
-                    sunset = sS;
-                }
+        // Try to fetch real weather via Open-Meteo for known locations
+        try {
+            if (requestType === 'geolocation') {
+                const day = body.day === 'tomorrow' ? 'tomorrow' : 'today';
+                const w = await fetchWeatherFromApi(body.lat, body.lon, day);
+                // Use coordinates as location name if we can't reverse geocode easily
+                apiWeatherData = { ...w, location: `${body.lat.toFixed(4)}, ${body.lon.toFixed(4)}` };
+                promptContext = `User is at ${apiWeatherData.location}. The weather data is provided below.`;
+                if (schedule) promptContext += ` User schedule: ${schedule}`;
+            } 
+            else if (requestType === 'location') {
+                 const day = body.day === 'tomorrow' ? 'tomorrow' : 'today';
+                 const geo = await geocodeLocation(body.location);
+                 const w = await fetchWeatherFromApi(geo.lat, geo.lon, day);
+                 apiWeatherData = { ...w, location: geo.name };
+                 promptContext = `User is in ${geo.name}. The weather data is provided below.`;
+                 if (schedule) promptContext += ` User schedule: ${schedule}`;
             }
-
-            const isNightAtTime = (time: string) => {
-                const minutes = parseTimeToMinutes(time);
-                if (minutes === null) return false;
-                return minutes >= sunset || minutes < sunrise;
-            };
-
-            const dayParts = [
-                { period: 'Morning', time: '07:00', temp: weatherData.temp07, condition: weatherData.condition07, isNight: isNightAtTime('07:00') },
-                { period: 'Afternoon', time: '12:00', temp: weatherData.temp12, condition: weatherData.condition12, isNight: isNightAtTime('12:00') },
-                { period: 'Evening', time: '17:00', temp: weatherData.temp17, condition: weatherData.condition17, isNight: isNightAtTime('17:00') },
-                { period: 'Night', time: '22:00', temp: weatherData.temp22, condition: weatherData.condition22, isNight: isNightAtTime('22:00') }
-            ].map(part => ({
-                ...part,
-                conditionIcon: mapConditionToIcon(part.condition, part.isNight),
-            }));
-
-            res.status(200).json({
-                weather: {
-                    location: weatherData.location,
-                    highTemp: weatherData.highTemp,
-                    lowTemp: weatherData.lowTemp,
-                    dayParts,
-                    ...(weatherData.dateRange && { dateRange: weatherData.dateRange }),
-                    // Pass raw data back so client can send it in next request
-                    raw: weatherData 
-                }
-            });
-            return;
+            else if (requestType === 'travel') {
+                 // For travel, we still rely on the LLM to find the weather for "Trip to Paris"
+                 // as we don't have a structured date/location parser here yet.
+                 promptContext = `weather for a trip to ${body.destinationAndDuration}`;
+            }
+            else {
+                res.status(400).json({ error: 'Invalid request type.' });
+                return;
+            }
+        } catch (err) {
+            log.error('API Weather fetch failed, falling back to LLM search', { error: String(err) });
+            // Fallback: promptContext needs to be set up for search if it wasn't already
+             switch (requestType) {
+                case 'geolocation':
+                    promptContext = `current weather at lat ${body.lat}, lon ${body.lon} for ${body.day === 'tomorrow' ? 'tomorrow' : 'today'}`;
+                    if (schedule) promptContext += `. User schedule: ${schedule}`;
+                    break;
+                case 'location':
+                    promptContext = `weather in "${body.location}" for ${body.day === 'tomorrow' ? 'tomorrow' : 'today'}`;
+                    if (schedule) promptContext += `. User schedule: ${schedule}`;
+                    break;
+            }
         }
 
-        if (!weatherData) {
-             res.status(400).json({ error: 'Weather data is required for clothing-only mode.' });
-             return;
-        }
+        // EXECUTE CALL
+        log.info('Executing generation', { requestType, hasApiWeather: !!apiWeatherData });
+        const resultData = await getWeatherAndSuggestions(promptContext, family, mode, apiWeatherData);
+        
+        // If we used API, resultData.suggestions exists but resultData.weather might be missing
+        const weatherData = apiWeatherData || resultData.weather;
+        const suggestions = resultData.suggestions || [];
 
-        // Step 2: Get clothing suggestions from Gemini
-        log.info('Generating clothing suggestions');
-        if (requestType === 'travel') {
-            clothingPrompt = createTravelClothingPrompt(family, weatherData);
-        } else {
-            clothingPrompt = createClothingPrompt(family, weatherData, schedule);
-        }
-        const suggestions = await getClothingSuggestions(clothingPrompt);
-        
-        // Return full response (either 'full' mode or 'clothing-only' result)
-        // If 'clothing-only', we don't strictly need to re-send weather, but keeping structure is safe.
-        // Or we can just send suggestions.
-        
-        // For clothing-only, we usually just want the array. 
-        // But to keep TypeScript types happy and simpler frontend, let's return the standard structure 
-        // even if weather part is reconstructed or omitted (if client handles partials).
-        // Actually, for 'clothing-only', let's return the suggestions list + the weather object as context.
-        
-        // Re-construct dayParts if needed (redundant if client has it, but safe)
-        // ... (omitted for brevity, assume 'full' flow logic applies)
-        
-        // Let's stick to the existing full logic for the final response construction to minimize breakage
-        // But we need sunrise/sunset variables which might be missing if we used providedWeatherData
-        
+        // Post-process weather data (formatting, icons)
         let sunrise = 6 * 60 + 30; 
         let sunset = 18 * 60 + 30;
         if (weatherData.sunrise && weatherData.sunset) {
@@ -488,19 +429,16 @@ export const suggestions: HttpFunction = async (req, res) => {
             conditionIcon: mapConditionToIcon(part.condition, part.isNight),
         }));
         
-        const result: GeminiResponse = {
+        const finalResponse: GeminiResponse = {
             weather: {
-                location: weatherData.location,
-                highTemp: weatherData.highTemp,
-                lowTemp: weatherData.lowTemp,
+                ...weatherData,
                 dayParts,
-                ...(weatherData.dateRange && { dateRange: weatherData.dateRange }),
-                raw: weatherData
+                raw: weatherData 
             },
             suggestions
         };
         
-        res.status(200).json(result);
+        res.status(200).json(finalResponse);
 
     } catch (error) {
         console.error("Error in Google Cloud Function:", error);
