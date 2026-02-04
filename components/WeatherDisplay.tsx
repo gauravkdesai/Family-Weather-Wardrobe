@@ -44,15 +44,16 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
     const tempRange = maxTemp - minTemp || 1; // Avoid division by zero
 
     const SVG_WIDTH = 300;
-    const SVG_HEIGHT = 150;
-    const PADDING_Y = 40;
+    const SVG_HEIGHT = 180;
+    const PADDING_TOP = 40;
+    const PADDING_BOTTOM = 60;
     const PADDING_X = 20;
-    const CHART_HEIGHT = SVG_HEIGHT - (2 * PADDING_Y);
+    const CHART_HEIGHT = SVG_HEIGHT - PADDING_TOP - PADDING_BOTTOM;
     const CHART_WIDTH = SVG_WIDTH - (2 * PADDING_X);
 
     const getPoint = (temp: number, index: number) => {
         const x = PADDING_X + (CHART_WIDTH / (dayParts.length - 1)) * index;
-        const y = SVG_HEIGHT - PADDING_Y - ((temp - minTemp) / tempRange) * CHART_HEIGHT;
+        const y = SVG_HEIGHT - PADDING_BOTTOM - ((temp - minTemp) / tempRange) * CHART_HEIGHT;
         return { x, y };
     };
 
@@ -89,7 +90,7 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
                                 <IconComponent className="w-full h-full drop-shadow-sm" />
                             </svg>
                             
-                            <text x={p.x} y={SVG_HEIGHT - 5} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
+                            <text x={p.x} y={SVG_HEIGHT - 10} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
                               {(() => {
                                 const t = dayParts[i].time || '';
                                 const [hhStr, mmStr] = t.split(':');
