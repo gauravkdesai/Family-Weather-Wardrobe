@@ -44,8 +44,8 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
     const tempRange = maxTemp - minTemp || 1; // Avoid division by zero
 
     const SVG_WIDTH = 300;
-    const SVG_HEIGHT = 120;
-    const PADDING_Y = 30;
+    const SVG_HEIGHT = 150;
+    const PADDING_Y = 40;
     const PADDING_X = 20;
     const CHART_HEIGHT = SVG_HEIGHT - (2 * PADDING_Y);
     const CHART_WIDTH = SVG_WIDTH - (2 * PADDING_X);
@@ -81,15 +81,15 @@ const WeatherTimeline: React.FC<{ dayParts: DayPartForecast[], tempUnit: 'C'|'F'
                     return (
                         <g key={i}>
                             <circle cx={p.x} cy={p.y} r="5" fill="#1e293b" stroke="#22d3ee" strokeWidth="2" />
-                            <text x={p.x} y={p.y - 15} textAnchor="middle" fill="currentColor" className="text-sm font-bold text-white drop-shadow-md" aria-label={`Temperature: ${temp} degrees ${tempUnit}`}>
+                            <text x={p.x} y={p.y - 12} textAnchor="middle" fill="currentColor" className="text-sm font-bold text-white drop-shadow-md" aria-label={`Temperature: ${temp} degrees ${tempUnit}`}>
                                 {temp}°
                             </text>
                             
-                            <foreignObject x={p.x - 12} y={SVG_HEIGHT - 40} width="24" height="24" aria-label={`Weather is ${dayParts[i].condition}`}>
+                            <foreignObject x={p.x - 12} y={p.y + 12} width="24" height="24" aria-label={`Weather is ${dayParts[i].condition}`}>
                                 <IconComponent className="w-full h-full drop-shadow-sm" />
                             </foreignObject>
                             
-                            <text x={p.x} y={SVG_HEIGHT - 10} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
+                            <text x={p.x} y={SVG_HEIGHT - 5} textAnchor="middle" fill="currentColor" className="text-[10px] uppercase tracking-wider font-medium text-slate-300">
                               {(() => {
                                 const t = dayParts[i].time || '';
                                 const [hhStr, mmStr] = t.split(':');
