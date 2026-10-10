@@ -451,7 +451,7 @@ const getWeatherAndSuggestions = async (
           ]
         }
         `;
-        tools = [{ googleSearch: {} }];
+        tools = [{ googleSearchRetrieval: {} }];
     }
 
     const generationConfig: any = {
