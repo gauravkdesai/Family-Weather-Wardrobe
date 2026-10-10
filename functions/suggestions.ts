@@ -451,7 +451,14 @@ const getWeatherAndSuggestions = async (
           ]
         }
         `;
-        tools = [{ googleSearchRetrieval: {} }];
+        tools = [{
+            googleSearchRetrieval: {
+                dynamicRetrievalConfig: {
+                    mode: 'MODE_DYNAMIC',
+                    dynamicThreshold: 0.3
+                }
+            }
+        }];
     }
 
     const generationConfig: any = {
@@ -624,9 +631,19 @@ export const suggestions: HttpFunction = async (req, res) => {
                  if (schedule) promptContext += ` User schedule: ${schedule}`;
             }
             else if (requestType === 'travel') {
-                 // For travel, we still rely on the LLM to find the weather for "Trip to Paris"
-                 // as we don't have a structured date/location parser here yet.
-                 promptContext = `weather for a trip to ${destinationAndDuration}`;
+                 const destCity = destinationAndDuration ? destinationAndDuration.split(/\s+for\s+|\s+in\s+|\s+during\s+/i)[0].trim() : '';
+                 if (destCity) {
+                     try {
+                         const geo = await geocodeLocation(destCity);
+                         const w = await fetchWeatherFromApi(geo.lat, geo.lon, day);
+                         apiWeatherData = { ...w, location: geo.name, dateRange: destinationAndDuration };
+                         promptContext = `User is traveling to ${destinationAndDuration} (destination: ${geo.name}). The weather data is provided below.`;
+                     } catch {
+                         promptContext = `weather for a trip to ${destinationAndDuration}`;
+                     }
+                 } else {
+                     promptContext = `weather for a trip to ${destinationAndDuration}`;
+                 }
             }
         } catch (err) {
             log.error('API Weather fetch failed, falling back to LLM search', { error: String(err) });
