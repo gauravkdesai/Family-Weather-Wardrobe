@@ -162,6 +162,41 @@ const clothingSuggestionsSchema: ResponseSchema = {
     required: ["suggestions"]
 };
 
+// In-memory sliding-window rate limiter per client IP
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = Number(process.env.RATE_LIMIT_MAX || '30');
+const ipRequestHistory = new Map<string, number[]>();
+
+export const checkRateLimit = (ip: string): boolean => {
+    if (!ip) return true;
+    const now = Date.now();
+    const timestamps = ipRequestHistory.get(ip) || [];
+    
+    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    
+    if (recent.length >= MAX_REQUESTS_PER_WINDOW) {
+        ipRequestHistory.set(ip, recent);
+        return false;
+    }
+    
+    recent.push(now);
+    ipRequestHistory.set(ip, recent);
+    
+    if (ipRequestHistory.size > 2000) {
+        for (const [key, list] of ipRequestHistory.entries()) {
+            if (list.every(t => now - t >= RATE_LIMIT_WINDOW_MS)) {
+                ipRequestHistory.delete(key);
+            }
+        }
+    }
+    
+    return true;
+};
+
+export const resetRateLimits = () => {
+    ipRequestHistory.clear();
+};
+
 // Prefer ADC (Application Default Credentials) or Secret Manager for production.
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
 const MODEL_NAME = process.env.GEMINI_MODEL || '';
@@ -498,6 +533,12 @@ export const suggestions: HttpFunction = async (req, res) => {
 
     if (!originAllowed) {
         res.status(403).json({ error: 'Origin not allowed' });
+        return;
+    }
+
+    const clientIp = ((req.headers?.['x-forwarded-for'] as string) || req.get?.('x-forwarded-for') || '').split(',')[0]?.trim() || req.ip || (req.socket as any)?.remoteAddress || '';
+    if (!checkRateLimit(clientIp)) {
+        res.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
         return;
     }
 

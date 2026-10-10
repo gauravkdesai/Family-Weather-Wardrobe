@@ -136,4 +136,35 @@ describe('suggestions handler (env guards and mock mode)', () => {
     expect(valid.data?.location).toBe('Zurich, Switzerland');
     expect(valid.data?.day).toBe('tomorrow');
   });
+
+  it('enforces rate limits and returns 429 when threshold exceeded', async () => {
+    process.env.ALLOWED_ORIGINS = 'https://example.com';
+    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.RATE_LIMIT_MAX = '3';
+
+    const { suggestions, resetRateLimits } = await import('../suggestions');
+    resetRateLimits();
+
+    const req: any = {
+      method: 'POST',
+      get: () => 'https://example.com',
+      headers: { 'x-forwarded-for': '198.51.100.1' },
+      body: { requestType: 'location', location: 'Paris', family: ['Adult'] },
+    };
+
+    // First 3 requests succeed (or return mock/400/500, but not 429)
+    for (let i = 0; i < 3; i++) {
+      const res = createRes();
+      await suggestions(req, res);
+      expect(res.statusCode).not.toBe(429);
+    }
+
+    // 4th request must be blocked by rate limiter
+    const blockedRes = createRes();
+    await suggestions(req, blockedRes);
+    expect(blockedRes.statusCode).toBe(429);
+    expect(blockedRes.body?.error).toMatch(/Too many requests/i);
+
+    resetRateLimits();
+  });
 });

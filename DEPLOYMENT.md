@@ -29,6 +29,7 @@ gcloud functions deploy wardrobe-suggestions \
   --gen2 --runtime nodejs20 --region=us-central1 \
   --source=functions/dist --entry-point=suggestions \
   --trigger-http --allow-unauthenticated \
+  --max-instances=5 \
   --env-vars-file config/functions.prod.yaml
 ```
 

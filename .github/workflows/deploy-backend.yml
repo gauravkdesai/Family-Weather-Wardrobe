@@ -100,4 +100,5 @@ jobs:
             --trigger-http \
             --allow-unauthenticated \
             --timeout=120 \
+            --max-instances=5 \
             ${ENV_FLAG[@]:+${ENV_FLAG[@]}}
