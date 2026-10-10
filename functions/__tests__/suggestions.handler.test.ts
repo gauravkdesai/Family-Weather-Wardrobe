@@ -140,6 +140,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
   it('enforces rate limits and returns 429 when threshold exceeded', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
     process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+    process.env.USE_MOCK_GEMINI = 'true';
     process.env.RATE_LIMIT_MAX = '3';
 
     const { suggestions, resetRateLimits } = await import('../suggestions');

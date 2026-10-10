@@ -205,7 +205,9 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT
     || process.env.GOOGLE_CLOUD_PROJECT
     || process.env.PROJECT_ID
     || process.env.PROJECT_NUMBER;
-const LOCATION = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || process.env.FUNCTION_REGION;
+const rawLocation = process.env.GCP_LOCATION || process.env.GOOGLE_CLOUD_REGION || process.env.GCLOUD_REGION || process.env.FUNCTION_REGION || 'us-central1';
+// Sanitize location: Vertex AI endpoints require specific regional names (e.g. us-central1, europe-west1). Multi-region values like 'us' or 'eu' are invalid in the Vertex AI SDK.
+const LOCATION = (rawLocation === 'us' || rawLocation === 'eu' || !rawLocation) ? 'us-central1' : rawLocation;
 const USE_MOCK_GEMINI = (process.env.USE_MOCK_GEMINI || '').toLowerCase() === 'true';
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
@@ -459,43 +461,71 @@ const getWeatherAndSuggestions = async (
         generationConfig.responseSchema = clothingSuggestionsSchema;
     }
 
-    const model = ai.getGenerativeModel({
-        model: requireModel(),
-        generationConfig
-    });
+    const preferredModel = requireModel();
+    const candidateModels = [
+        preferredModel,
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            const requestOptions: any = {
-                contents: asUserContent(prompt)
-            };
-            if (tools.length > 0) {
-                requestOptions.tools = tools;
+    for (const currentModelName of candidateModels) {
+        const model = ai.getGenerativeModel({
+            model: currentModelName,
+            generationConfig
+        });
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const requestOptions: any = {
+                    contents: asUserContent(prompt)
+                };
+                if (tools.length > 0) {
+                    requestOptions.tools = tools;
+                }
+
+                const response = await model.generateContent(requestOptions);
+
+                rawText = extractText(response);
+                const payload = extractJson(rawText);
+                const parsed = JSON.parse(payload);
+
+                // Validate critical fields
+                if (!providedWeather && (!parsed.weather || !parsed.weather.location)) {
+                    throw new Error('Incomplete weather data in response');
+                }
+                if (mode !== 'weather-only' && (!parsed.suggestions || !Array.isArray(parsed.suggestions))) {
+                    throw new Error('Missing suggestions in response');
+                }
+
+                return parsed;
+            } catch (err) {
+                lastErr = err instanceof Error ? err : new Error(String(err));
+                const errMsg = lastErr.message;
+                const isModelUnavailable =
+                    errMsg.includes('404') ||
+                    errMsg.includes('NOT_FOUND') ||
+                    errMsg.includes('was not found') ||
+                    errMsg.includes('Publisher model') ||
+                    errMsg.includes('does not have access');
+
+                log.error('getWeatherAndSuggestions attempt failed', {
+                    model: currentModelName,
+                    attempt,
+                    error: errMsg,
+                    isModelUnavailable
+                });
+
+                if (isModelUnavailable) {
+                    log.info(`Model ${currentModelName} unavailable or inaccessible in project, trying fallback`);
+                    break;
+                }
+
+                if (attempt === MAX_RETRIES) {
+                    break;
+                }
+                const waitMs = jitter(500 * Math.pow(2, attempt));
+                await new Promise(r => setTimeout(r, waitMs));
             }
-
-            const response = await model.generateContent(requestOptions);
-
-            rawText = extractText(response);
-            const payload = extractJson(rawText);
-            const parsed = JSON.parse(payload);
-
-            // Validate critical fields
-            if (!providedWeather && (!parsed.weather || !parsed.weather.location)) {
-                throw new Error('Incomplete weather data in response');
-            }
-            if (mode !== 'weather-only' && (!parsed.suggestions || !Array.isArray(parsed.suggestions))) {
-                throw new Error('Missing suggestions in response');
-            }
-
-            return parsed;
-        } catch (err) {
-            lastErr = err instanceof Error ? err : new Error(String(err));
-            log.error('getWeatherAndSuggestions attempt failed', { attempt, error: lastErr.message });
-            if (attempt === MAX_RETRIES) {
-                throw new Error(`Failed to get suggestions after ${MAX_RETRIES} attempts: ${lastErr.message}`);
-            }
-            const waitMs = jitter(500 * Math.pow(2, attempt));
-            await new Promise(r => setTimeout(r, waitMs));
         }
     }
     throw lastErr || new Error('Unknown failure');
