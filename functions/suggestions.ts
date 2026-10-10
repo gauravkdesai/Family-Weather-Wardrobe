@@ -1,7 +1,166 @@
 import type { HttpFunction } from "@google-cloud/functions-framework";
-import { VertexAI } from "@google-cloud/vertexai";
+import { VertexAI, SchemaType, ResponseSchema } from "@google-cloud/vertexai";
 import type { GeminiResponse } from '../types';
 import { mockGeminiResponse } from '../mockData';
+
+export interface ValidatedRequestData {
+    requestType: 'geolocation' | 'location' | 'travel';
+    mode: 'full' | 'weather-only' | 'clothing-only';
+    family: string[];
+    schedule: string;
+    lat?: number;
+    lon?: number;
+    location?: string;
+    destinationAndDuration?: string;
+    day: 'today' | 'tomorrow';
+}
+
+export const validateRequest = (body: any): { error?: string; data?: ValidatedRequestData } => {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return { error: 'Request body must be a valid JSON object.' };
+    }
+
+    const { requestType, mode = 'full', day = 'today' } = body;
+
+    if (!['geolocation', 'location', 'travel'].includes(requestType)) {
+        return { error: "Invalid 'requestType'. Must be 'geolocation', 'location', or 'travel'." };
+    }
+
+    if (!['full', 'weather-only', 'clothing-only'].includes(mode)) {
+        return { error: "Invalid 'mode'. Must be 'full', 'weather-only', or 'clothing-only'." };
+    }
+
+    const validatedDay = day === 'tomorrow' ? 'tomorrow' : 'today';
+
+    let family: string[] = [];
+    if (body.family !== undefined && body.family !== null) {
+        if (!Array.isArray(body.family)) {
+            return { error: "'family' must be an array of member names." };
+        }
+        if (body.family.length > 20) {
+            return { error: "'family' array cannot exceed 20 members." };
+        }
+        for (const member of body.family) {
+            if (typeof member !== 'string') {
+                return { error: "Each member in 'family' must be a string." };
+            }
+            const trimmed = member.trim();
+            if (!trimmed || trimmed.length > 50) {
+                return { error: "Member names must be non-empty and under 50 characters." };
+            }
+            family.push(trimmed);
+        }
+    }
+
+    let schedule = '';
+    if (body.schedule !== undefined && body.schedule !== null) {
+        if (typeof body.schedule !== 'string') {
+            return { error: "'schedule' must be a string." };
+        }
+        if (body.schedule.length > 300) {
+            return { error: "'schedule' must not exceed 300 characters." };
+        }
+        schedule = body.schedule.trim();
+    }
+
+    if (requestType === 'geolocation') {
+        const lat = Number(body.lat);
+        const lon = Number(body.lon);
+        if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+            return { error: "Invalid 'lat'. Must be a finite number between -90 and 90." };
+        }
+        if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+            return { error: "Invalid 'lon'. Must be a finite number between -180 and 180." };
+        }
+        return {
+            data: {
+                requestType: 'geolocation',
+                mode,
+                family,
+                schedule,
+                lat,
+                lon,
+                day: validatedDay
+            }
+        };
+    }
+
+    if (requestType === 'location') {
+        if (typeof body.location !== 'string' || !body.location.trim()) {
+            return { error: "Field 'location' is required and must be a non-empty string." };
+        }
+        const loc = body.location.trim();
+        if (loc.length > 120) {
+            return { error: "Field 'location' must not exceed 120 characters." };
+        }
+        return {
+            data: {
+                requestType: 'location',
+                mode,
+                family,
+                schedule,
+                location: loc,
+                day: validatedDay
+            }
+        };
+    }
+
+    if (requestType === 'travel') {
+        if (typeof body.destinationAndDuration !== 'string' || !body.destinationAndDuration.trim()) {
+            return { error: "Field 'destinationAndDuration' is required and must be a non-empty string." };
+        }
+        const dest = body.destinationAndDuration.trim();
+        if (dest.length > 150) {
+            return { error: "Field 'destinationAndDuration' must not exceed 150 characters." };
+        }
+        return {
+            data: {
+                requestType: 'travel',
+                mode,
+                family,
+                schedule,
+                destinationAndDuration: dest,
+                day: validatedDay
+            }
+        };
+    }
+
+    return { error: 'Invalid request configuration.' };
+};
+
+const clothingSuggestionsSchema: ResponseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+        location: {
+            type: SchemaType.STRING,
+            description: "Identified City and Region (e.g. 'Zurich, Switzerland')"
+        },
+        suggestions: {
+            type: SchemaType.ARRAY,
+            description: "Clothing suggestions for each family member",
+            items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                    member: {
+                        type: SchemaType.STRING,
+                        description: "Name of the family member"
+                    },
+                    outfit: {
+                        type: SchemaType.ARRAY,
+                        items: { type: SchemaType.STRING },
+                        description: "Clothing items suited to the forecast"
+                    },
+                    notes: {
+                        type: SchemaType.STRING,
+                        description: "Reasoning for the outfit choices"
+                    }
+                },
+                required: ["member", "outfit", "notes"]
+            }
+        }
+    },
+    required: ["suggestions"]
+};
 
 // Prefer ADC (Application Default Credentials) or Secret Manager for production.
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || '3');
@@ -104,8 +263,8 @@ const mapWmoCodeToCondition = (code: number): string => {
 };
 
 async function fetchWeatherFromApi(lat: number, lon: number, day: 'today' | 'tomorrow'): Promise<any> {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=2`;
-    const res = await fetch(url);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&hourly=temperature_2m,weathercode&daily=weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=2`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`Weather API failed: ${res.statusText}`);
     const data = await res.json();
     
@@ -141,8 +300,8 @@ async function fetchWeatherFromApi(lat: number, lon: number, day: 'today' | 'tom
 }
 
 async function geocodeLocation(location: string): Promise<{lat: number, lon: number, name: string}> {
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=en&format=json`;
-    const res = await fetch(url);
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location.trim())}&count=1&language=en&format=json`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`Geocoding API failed: ${res.statusText}`);
     const data = await res.json();
     if (!data.results || data.results.length === 0) throw new Error(`Location not found: ${location}`);
@@ -258,9 +417,20 @@ const getWeatherAndSuggestions = async (
         tools = [{ googleSearch: {} }];
     }
 
+    const generationConfig: any = {
+        responseMimeType: 'application/json'
+    };
+    if (tools.length === 0) {
+        generationConfig.responseSchema = clothingSuggestionsSchema;
+    }
+
+    const model = ai.getGenerativeModel({
+        model: requireModel(),
+        generationConfig
+    });
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-            const model = ai.getGenerativeModel({ model: requireModel() });
             const requestOptions: any = {
                 contents: asUserContent(prompt)
             };
@@ -332,12 +502,15 @@ export const suggestions: HttpFunction = async (req, res) => {
     }
 
     try {
-        const body = req.body;
-        const { requestType, mode = 'full', weatherData: providedWeatherData } = body;
-
         // If mock mode
         if (USE_MOCK_GEMINI) {
             res.status(200).json(mockGeminiResponse);
+            return;
+        }
+
+        const validation = validateRequest(req.body);
+        if (validation.error || !validation.data) {
+            res.status(400).json({ error: validation.error || 'Invalid request' });
             return;
         }
 
@@ -346,25 +519,33 @@ export const suggestions: HttpFunction = async (req, res) => {
             return;
         }
 
+        const {
+            requestType,
+            mode,
+            family,
+            schedule,
+            day,
+            lat,
+            lon,
+            location,
+            destinationAndDuration
+        } = validation.data;
+
         // Construct context
         let promptContext = '';
-        let family: string[] = body.family || [];
-        let schedule = body.schedule || '';
         let apiWeatherData: any = null;
 
         // Try to fetch real weather via Open-Meteo for known locations
         try {
             if (requestType === 'geolocation') {
-                const day = body.day === 'tomorrow' ? 'tomorrow' : 'today';
-                const w = await fetchWeatherFromApi(body.lat, body.lon, day);
+                const w = await fetchWeatherFromApi(lat!, lon!, day);
                 // Use coordinates as location name if we can't reverse geocode easily
-                apiWeatherData = { ...w, location: `${body.lat.toFixed(4)}, ${body.lon.toFixed(4)}` };
+                apiWeatherData = { ...w, location: `${lat!.toFixed(4)}, ${lon!.toFixed(4)}` };
                 promptContext = `User is at ${apiWeatherData.location}. The weather data is provided below.`;
                 if (schedule) promptContext += ` User schedule: ${schedule}`;
             } 
             else if (requestType === 'location') {
-                 const day = body.day === 'tomorrow' ? 'tomorrow' : 'today';
-                 const geo = await geocodeLocation(body.location);
+                 const geo = await geocodeLocation(location!);
                  const w = await fetchWeatherFromApi(geo.lat, geo.lon, day);
                  apiWeatherData = { ...w, location: geo.name };
                  promptContext = `User is in ${geo.name}. The weather data is provided below.`;
@@ -373,22 +554,18 @@ export const suggestions: HttpFunction = async (req, res) => {
             else if (requestType === 'travel') {
                  // For travel, we still rely on the LLM to find the weather for "Trip to Paris"
                  // as we don't have a structured date/location parser here yet.
-                 promptContext = `weather for a trip to ${body.destinationAndDuration}`;
-            }
-            else {
-                res.status(400).json({ error: 'Invalid request type.' });
-                return;
+                 promptContext = `weather for a trip to ${destinationAndDuration}`;
             }
         } catch (err) {
             log.error('API Weather fetch failed, falling back to LLM search', { error: String(err) });
             // Fallback: promptContext needs to be set up for search if it wasn't already
-             switch (requestType) {
+            switch (requestType) {
                 case 'geolocation':
-                    promptContext = `current weather at lat ${body.lat}, lon ${body.lon} for ${body.day === 'tomorrow' ? 'tomorrow' : 'today'}`;
+                    promptContext = `current weather at lat ${lat}, lon ${lon} for ${day}`;
                     if (schedule) promptContext += `. User schedule: ${schedule}`;
                     break;
                 case 'location':
-                    promptContext = `weather in "${body.location}" for ${body.day === 'tomorrow' ? 'tomorrow' : 'today'}`;
+                    promptContext = `weather in "${location}" for ${day}`;
                     if (schedule) promptContext += `. User schedule: ${schedule}`;
                     break;
             }

@@ -39,4 +39,13 @@ class VertexAI {
   }
 }
 
-module.exports = { VertexAI };
+const SchemaType = {
+  STRING: 'STRING',
+  NUMBER: 'NUMBER',
+  INTEGER: 'INTEGER',
+  BOOLEAN: 'BOOLEAN',
+  ARRAY: 'ARRAY',
+  OBJECT: 'OBJECT'
+};
+
+module.exports = { VertexAI, SchemaType };
