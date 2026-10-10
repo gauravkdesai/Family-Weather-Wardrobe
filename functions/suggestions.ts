@@ -665,7 +665,7 @@ export const suggestions: HttpFunction = async (req, res) => {
         res.status(200).json(finalResponse);
 
     } catch (error) {
-        console.error("Error in Google Cloud Function:", error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'An unexpected error occurred.' });
+        log.error("Internal Cloud Function error:", { error: error instanceof Error ? error.message : String(error) });
+        res.status(500).json({ error: 'Unable to generate outfit suggestions at this time. Please try again shortly.' });
     }
 };

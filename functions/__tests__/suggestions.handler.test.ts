@@ -34,7 +34,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
 
   it('returns 500 when ALLOWED_ORIGINS is missing', async () => {
     process.env.ALLOWED_ORIGINS = '';
-    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
 
     const { suggestions } = await import('../suggestions');
 
@@ -53,7 +53,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
 
   it('short-circuits to mock data when USE_MOCK_GEMINI is true', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
-    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
     process.env.USE_MOCK_GEMINI = 'true';
 
     const { suggestions } = await import('../suggestions');
@@ -73,7 +73,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
 
   it('returns 400 on invalid requestType', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
-    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
 
     const { suggestions } = await import('../suggestions');
 
@@ -92,7 +92,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
 
   it('returns 400 on out-of-range coordinates for geolocation', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
-    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
 
     const { suggestions } = await import('../suggestions');
 
@@ -139,7 +139,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
 
   it('enforces rate limits and returns 429 when threshold exceeded', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
-    process.env.GEMINI_MODEL = 'gemini-3.5-flash-lite';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
     process.env.RATE_LIMIT_MAX = '3';
 
     const { suggestions, resetRateLimits } = await import('../suggestions');
@@ -166,5 +166,28 @@ describe('suggestions handler (env guards and mock mode)', () => {
     expect(blockedRes.body?.error).toMatch(/Too many requests/i);
 
     resetRateLimits();
+  });
+
+  it('returns sanitized error on internal exceptions without leaking GCP project details', async () => {
+    process.env.ALLOWED_ORIGINS = 'https://example.com';
+    process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+
+    const { suggestions, resetRateLimits } = await import('../suggestions');
+    resetRateLimits();
+
+    const req: any = {
+      method: 'POST',
+      get: () => 'https://example.com',
+      headers: { 'x-forwarded-for': '198.51.100.99' },
+      body: { requestType: 'travel', destinationAndDuration: 'Trigger Error', family: ['Adult'] },
+    };
+    const res = createRes();
+
+    await suggestions(req, res);
+
+    // In unit test without real Vertex credentials, generation throws and catch block must return sanitized error
+    expect(res.statusCode).toBe(500);
+    expect(res.body?.error).toBe('Unable to generate outfit suggestions at this time. Please try again shortly.');
+    expect(res.body?.error).not.toMatch(/project|vertexai|publishers|locations/i);
   });
 });

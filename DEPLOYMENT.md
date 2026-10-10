@@ -46,6 +46,7 @@ npm test -- functions
 ## Environment variables (recommended defaults)
 
 See `.env.example` for both frontend (Vite) and backend (Cloud Function) values. For production, non-secret defaults live in `.env.production` (frontend) and `config/functions.prod.yaml` (backend). Key ones:
-- `GEMINI_MODEL`: required (e.g., `gemini-3.5-flash-lite`)
+- `GEMINI_MODEL`: required (e.g., `gemini-3.8-flash`)
+- `GCP_LOCATION`: region for model (e.g., `us` for Gemini 3 series)
 - `GEMINI_MAX_RETRIES`: default `3`
 - `ALLOWED_ORIGINS`: required comma-separated allowlist for CORS

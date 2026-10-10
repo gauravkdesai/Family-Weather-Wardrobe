@@ -50,6 +50,19 @@ const friendlyError = (err: unknown): string => {
   if (lower.includes('cors')) {
     return 'Request was blocked by CORS. Please try again or contact support if it persists.';
   }
+  if (
+    lower.includes('vertexai') ||
+    lower.includes('project') ||
+    lower.includes('publisher') ||
+    lower.includes('not found') ||
+    lower.includes('status:') ||
+    lower.includes('clienterror') ||
+    lower.includes('status 500') ||
+    lower.includes('status 404') ||
+    lower.includes('gcloud')
+  ) {
+    return 'Unable to generate outfit suggestions at this time. Please try again shortly.';
+  }
   return raw;
 };
 
