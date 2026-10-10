@@ -464,9 +464,9 @@ const getWeatherAndSuggestions = async (
     const preferredModel = requireModel();
     const candidateModels = [
         preferredModel,
-        'gemini-3.5-flash',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash-lite',
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
     ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
     for (const currentModelName of candidateModels) {
