@@ -30,7 +30,7 @@ Get personalized clothing suggestions for your family based on today's weather o
 ## Deployments
 
 - **Frontend (GitHub Pages)**: `.github/workflows/deploy-pages.yml` builds with Vite and publishes `dist/` to Pages. Requires secret `FUNCTION_URL` set to the deployed Cloud Function URL. Manual deploy: `VITE_FUNCTION_URL="https://<function>.run.app" npm run build && npm run deploy`.
-- **Backend (Cloud Functions gen2)**: `.github/workflows/deploy-backend.yml` builds `functions/dist` then deploys via gcloud with Workload Identity Federation. Requires secrets `GCP_PROJECT_ID`, `GCP_REGION` (optional, defaults `us-central1`), `GCP_SERVICE_ACCOUNT_EMAIL`, `GCP_WORKLOAD_IDENTITY_PROVIDER`. Optional repo var `FUNCTION_ENV_VARS` to set env vars (e.g., `GEMINI_MODEL=gemini-2.5-flash,ALLOWED_ORIGINS=https://weather-appropriate-wardrobe.gaurav-desai.com`).
+- **Backend (Cloud Functions gen2)**: `.github/workflows/deploy-backend.yml` builds `functions/dist` then deploys via gcloud with Workload Identity Federation. Requires secrets `GCP_PROJECT_ID`, `GCP_REGION` (optional, defaults `us-central1`), `GCP_SERVICE_ACCOUNT_EMAIL`, `GCP_WORKLOAD_IDENTITY_PROVIDER`. Optional repo var `FUNCTION_ENV_VARS` to set env vars (e.g., `GEMINI_MODEL=gemini-3.8-flash,ALLOWED_ORIGINS=https://weather-appropriate-wardrobe.gaurav-desai.com`).
 
 ## Continuous Integration (GitHub Actions)
 
@@ -51,7 +51,7 @@ CI (`.github/workflows/ci.yml`) installs dependencies and runs tests/lint. Deplo
 
 ### Backend Environment Variables
 - `GEMINI_API_KEY`: Only needed locally if ADC unavailable
-- `GEMINI_MODEL`: Required (e.g., `gemini-2.5-flash`)
+- `GEMINI_MODEL`: Required (e.g., `gemini-3.8-flash`)
 - `GEMINI_MAX_RETRIES`: Default `3`
 - `ALLOWED_ORIGINS`: Required comma-separated allowlist for CORS
 - `USE_MOCK_GEMINI`: Set `true` to bypass Gemini calls

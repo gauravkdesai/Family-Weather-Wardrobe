@@ -172,6 +172,7 @@ describe('suggestions handler (env guards and mock mode)', () => {
   it('returns sanitized error on internal exceptions without leaking GCP project details', async () => {
     process.env.ALLOWED_ORIGINS = 'https://example.com';
     process.env.GEMINI_MODEL = 'gemini-3.8-flash';
+    process.env.GEMINI_MAX_RETRIES = '1';
 
     const { suggestions, resetRateLimits } = await import('../suggestions');
     resetRateLimits();
